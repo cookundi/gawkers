@@ -16,15 +16,15 @@ body {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-/* Retro CRT Scanline Overlay */
+/* Retro CRT Scanline Overlay - Slightly toned down for visibility */
 body::after {
   content: " ";
   display: block;
   position: absolute;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
   z-index: 100;
-  background-size: 100% 3px, 3px 100%;
+  background-size: 100% 4px, 4px 100%;
   pointer-events: none;
 }
 
@@ -35,11 +35,21 @@ canvas {
 
 /* Animations for "Game Vibe" */
 @keyframes pulse-border {
-  0% { border-color: rgba(160, 32, 240, 0.3); }
-  50% { border-color: rgba(160, 32, 240, 1); }
-  100% { border-color: rgba(160, 32, 240, 0.3); }
+  0% { border-color: rgba(160, 32, 240, 0.3); box-shadow: 0 0 5px rgba(160, 32, 240, 0.2); }
+  50% { border-color: rgba(160, 32, 240, 1); box-shadow: 0 0 20px rgba(160, 32, 240, 0.4); }
+  100% { border-color: rgba(160, 32, 240, 0.3); box-shadow: 0 0 5px rgba(160, 32, 240, 0.2); }
 }
 
 .game-border {
   animation: pulse-border 2s infinite;
+}
+
+/* Smooth fade for game entry */
+.animate-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
 }
