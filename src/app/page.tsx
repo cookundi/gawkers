@@ -71,7 +71,7 @@ export default function Home() {
               <h1 className="text-6xl font-black italic tracking-tighter text-purple-600 drop-shadow-[0_0_15px_rgba(160,32,240,0.5)]">GAWKERS.</h1>
               <div className="flex items-center gap-2">
                 <div className="h-[1px] w-8 bg-purple-500/50" />
-                <p className="text-zinc-500 text-[10px] uppercase tracking-[0.4em] font-bold">The Gauntlet v2.0</p>
+                <p className="text-zinc-500 text-[10px] uppercase tracking-[0.4em] font-bold">The Gauntlet</p>
               </div>
             </div>
             
