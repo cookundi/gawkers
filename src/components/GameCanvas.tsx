@@ -349,7 +349,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const CHARACTERS = [
     { id: 1, name: 'Gawker Prime', url: 'https://i.imgur.com/4sBhVbB.png' }, 
-    { id: 2, name: 'Neon Gawker', url: 'https://i.imgur.com/q3JeLr5.png' },
+    { id: 2, name: 'Gawker Papi', url: 'https://i.imgur.com/q3JeLr5.png' },
     { id: 3, name: 'Deep Sea', url: 'https://i.imgur.com/fxZVD8Q.png' },
 ];
 
@@ -562,7 +562,7 @@ export const GameCanvas = ({ levelToPlay, onLevelWin, onQuit }: GameProps) => {
     }, [gameState, selectedImg, levelToPlay, targetScore]);
 
     return (
-        <div className="relative border-4 border-purple-900/50 bg-black shadow-[0_0_50px_rgba(160,32,240,0.2)] overflow-hidden select-none touch-none">
+        <div className="relative border-2 border-purple-900/50 bg-black shadow-[0_0_2px_rgba(160,32,240,0.2)] overflow-hidden select-none touch-none">
             <canvas ref={canvasRef} width={400} height={600} className="block" />
             
             {gameState === 'playing' && (

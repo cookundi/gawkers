@@ -91,20 +91,20 @@ export default function Home() {
               <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
                 <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-2">
                   <span className="w-2 h-2 bg-purple-500 animate-ping rounded-full" />
-                  Pilot System Active
+                  Pilot Profile
                 </span>
                 <button onClick={logout} className="text-zinc-500 text-[10px] font-bold uppercase hover:text-red-500 transition-colors">Terminate Session</button>
               </div>
               <div className="space-y-6">
                 <div>
-                    <p className="text-[9px] text-zinc-500 uppercase mb-1 font-bold">Neural Address</p>
+                    <p className="text-[9px] text-zinc-500 uppercase mb-1 font-bold">Address</p>
                     <p className="text-xs font-mono break-all text-purple-200/70">{user?.wallet?.address}</p>
                 </div>
                 <div>
                     <div className="flex justify-between text-[10px] font-black uppercase mb-2">
-                        <span className="text-zinc-400">Clearance Level</span>
+                        <span className="text-zinc-400">Whitelist Progress</span>
                         <span className={isWhitelisted ? "text-green-400 shadow-[0_0_10px_rgba(74,222,128,0.4)]" : "text-purple-400"}>
-                            {isWhitelisted ? "Access Granted" : "In Progress"}
+                            {isWhitelisted ? "Under Review" : "In Progress"}
                         </span>
                     </div>
                     <div className="h-2 bg-zinc-900 w-full rounded-full border border-white/5 overflow-hidden p-[2px]">

@@ -1,3 +1,6 @@
+/* 1. Pull the font from Google */
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&display=swap');
+
 @import "tailwindcss";
 
 @theme {
@@ -13,10 +16,11 @@
 }
 
 body {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  /* 2. Change 'JetBrains Mono' to 'Pixelify Sans' */
+  font-family: 'Pixelify Sans', sans-serif;
 }
 
-/* Retro CRT Scanline Overlay - Slightly toned down for visibility */
+/* Retro CRT Scanline Overlay */
 body::after {
   content: " ";
   display: block;
@@ -33,7 +37,6 @@ canvas {
   image-rendering: crisp-edges;
 }
 
-/* Animations for "Game Vibe" */
 @keyframes pulse-border {
   0% { border-color: rgba(160, 32, 240, 0.3); box-shadow: 0 0 5px rgba(160, 32, 240, 0.2); }
   50% { border-color: rgba(160, 32, 240, 1); box-shadow: 0 0 20px rgba(160, 32, 240, 0.4); }
@@ -44,7 +47,6 @@ canvas {
   animation: pulse-border 2s infinite;
 }
 
-/* Smooth fade for game entry */
 .animate-in {
   animation: fadeIn 0.5s ease-out forwards;
 }
