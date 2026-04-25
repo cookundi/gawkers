@@ -1,57 +1,69 @@
-/* 1. Pull the font from Google */
-@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-gawker-purple: #2D0054;
-  --color-gawker-neon: #A020F0;
-  --color-gawker-bg: #050505;
+    --color-gawker-purple: #A020F0;
+    --color-gawker-bg: #050505;
+    --font-pixel: "Pixelify Sans", sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
 }
 
-:root {
-  background-color: var(--color-gawker-bg);
-  color: white;
-  overflow: hidden;
-}
+html { overflow-x: hidden; }
 
 body {
-  /* 2. Change 'JetBrains Mono' to 'Pixelify Sans' */
-  font-family: 'Pixelify Sans', sans-serif;
+    background: #050505;
+    color: white;
+    font-family: "Pixelify Sans", sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
 }
 
-/* Retro CRT Scanline Overlay */
+.font-pixel { font-family: "Pixelify Sans", sans-serif; }
+.font-mono { font-family: "JetBrains Mono", monospace; }
+
+/* Scanline overlay */
 body::after {
-  content: " ";
-  display: block;
-  position: absolute;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
-  z-index: 100;
-  background-size: 100% 4px, 4px 100%;
-  pointer-events: none;
+    content: "";
+    display: block;
+    position: fixed;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+    z-index: 9999;
+    pointer-events: none;
 }
 
 canvas {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 
-@keyframes pulse-border {
-  0% { border-color: rgba(160, 32, 240, 0.3); box-shadow: 0 0 5px rgba(160, 32, 240, 0.2); }
-  50% { border-color: rgba(160, 32, 240, 1); box-shadow: 0 0 20px rgba(160, 32, 240, 0.4); }
-  100% { border-color: rgba(160, 32, 240, 0.3); box-shadow: 0 0 5px rgba(160, 32, 240, 0.2); }
+::selection { background: #A020F0; color: white; }
+input::placeholder { color: #333; }
+input:focus { outline: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #222; }
+::-webkit-scrollbar-thumb:hover { background: #A020F0; }
+
+/* ─── Custom Gaming Loader ─── */
+.loader-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: 44px;
+    height: 44px;
 }
 
-.game-border {
-  animation: pulse-border 2s infinite;
+.loader-cell {
+    width: 12px;
+    height: 12px;
+    background: #A020F0;
+    animation: loaderPulse 1.2s ease-in-out infinite;
 }
 
-.animate-in {
-  animation: fadeIn 0.5s ease-out forwards;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+@keyframes loaderPulse {
+    0%, 100% { opacity: 0.08; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); background: #A020F0; }
+    60% { opacity: 0.4; transform: scale(0.95); background: #7010c0; }
 }

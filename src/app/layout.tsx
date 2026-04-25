@@ -1,24 +1,15 @@
-'use client';
-import { PrivyProvider } from '@privy-io/react-auth';
-import "./globals.css";
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+    title: 'GAWKERS — The Gauntlet',
+    description: 'Pixel-art gaming powerhouse on Ethereum. Play to earn your mint.',
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body suppressHydrationWarning={true}>
-        <PrivyProvider
-          appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""}
-          config={{
-            appearance: {
-              theme: 'dark',
-              accentColor: '#A020F0', // Gawker Purple
-              showWalletLoginFirst: true,
-            },
-          }}
-        >
-          {children}
-        </PrivyProvider>
-      </body>
-    </html>
-  );
+    return (
+        <html lang="en">
+            <body suppressHydrationWarning>{children}</body>
+        </html>
+    );
 }

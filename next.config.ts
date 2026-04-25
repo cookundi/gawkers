@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-
-  allowedDevOrigins: ['f170-102-216-181-38.ngrok-free.app', 'gawkers.netlify.app'],
-
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'i.imgur.com' },
+      { protocol: 'https', hostname: 'pbs.twimg.com' },
+    ],
+  },
 };
 
 export default nextConfig;

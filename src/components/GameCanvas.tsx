@@ -1,644 +1,684 @@
-
-
-// 'use client';
-// import React, { useEffect, useRef, useState } from 'react';
-
-// const CHARACTERS = [
-//     { id: 1, name: 'Gawker Prime', url: 'https://i.imgur.com/4sBhVbB.png' }, 
-//     { id: 2, name: 'Neon Gawker', url: 'https://i.imgur.com/q3JeLr5.png' },
-//     { id: 3, name: 'Deep Sea', url: 'https://i.imgur.com/fxZVD8Q.png' },
-// ];
-
-// interface GameProps {
-//     levelToPlay: number;
-//     onLevelWin: (level: number, score: number) => void;
-//     onQuit: () => void;
-// }
-
-// export const GameCanvas = ({ levelToPlay, onLevelWin, onQuit }: GameProps) => {
-//     const canvasRef = useRef<HTMLCanvasElement>(null);
-//     const [gameState, setGameState] = useState<'selection' | 'playing' | 'paused' | 'gameover' | 'win'>('selection');
-//     const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null);
-
-//     // Audio Refs
-//     const sfx = useRef<{ [key: string]: HTMLAudioElement | null }>({});
-//     const bgMusic = useRef<HTMLAudioElement | null>(null);
-
-//     // Gameplay Refs
-//     const player = useRef({ x: 175, y: 500, w: 50, h: 50, recoil: 0 });
-//     const enemies = useRef<any[]>([]);
-//     const bullets = useRef<any[]>([]);
-//     const score = useRef(0);
-//     const frame = useRef(0);
-//     const startTime = useRef(Date.now());
-//     const targetScore = levelToPlay === 1 ? 500 : levelToPlay === 2 ? 1000 : 2000;
-
-//     // We use a ref for keys to ensure the touch handlers and the useEffect loop share the same state
-//     const keys = useRef<Record<string, boolean>>({});
-
-//     useEffect(() => {
-//         sfx.current = {
-//             shoot: new Audio('/laser.mp3'),
-//             explode: new Audio('/explosion.mp3'),
-//             win: new Audio('/levelup.mp3'),
-//         };
-        
-//         bgMusic.current = new Audio('/bg-music.mp3');
-//         if (bgMusic.current) {
-//             bgMusic.current.loop = true;
-//             bgMusic.current.volume = 0.15;
-//         }
-
-//         return () => {
-//             bgMusic.current?.pause();
-//             bgMusic.current = null;
-//         };
-//     }, []);
-
-//     const playSound = (sound: HTMLAudioElement | undefined | null, vol = 0.2) => {
-//         if (sound) {
-//             const clone = sound.cloneNode() as HTMLAudioElement;
-//             clone.volume = vol;
-//             clone.play().catch(() => {}); 
-//         }
-//     };
-
-//     const initGame = (url: string) => {
-//         const img = new window.Image();
-//         img.crossOrigin = "anonymous";
-//         img.src = url;
-//         img.onload = () => {
-//             setSelectedImg(img);
-//             setGameState('playing');
-//             bgMusic.current?.play().catch(() => {});
-            
-//             // Reset game state
-//             score.current = 0;
-//             enemies.current = [];
-//             bullets.current = [];
-//             frame.current = 0;
-//             player.current.x = 175;
-//             player.current.recoil = 0;
-//             startTime.current = Date.now();
-//         };
-//     };
-
-//     const drawBombEnemy = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) => {
-//         ctx.save();
-//         ctx.translate(x + size / 2, y + size / 2);
-//         ctx.fillStyle = color;
-//         ctx.beginPath();
-//         ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
-//         ctx.fill();
-//         ctx.strokeStyle = '#000';
-//         ctx.lineWidth = 2;
-//         ctx.stroke();
-//         ctx.fillStyle = 'white';
-//         ctx.fillRect(-size / 4, -size / 6, size / 6, size / 6);
-//         ctx.fillRect(size / 10, -size / 6, size / 6, size / 6);
-//         ctx.fillStyle = 'red';
-//         ctx.fillRect(-size / 4 + 2, -size / 6 + 2, 3, 3);
-//         ctx.fillRect(size / 10 + 2, -size / 6 + 2, 3, 3);
-//         ctx.restore();
-//     };
-
-//     useEffect(() => {
-//         if (gameState !== 'playing' || !canvasRef.current || !selectedImg) {
-//             if (gameState !== 'playing' && gameState !== 'paused' && gameState !== 'win') {
-//                 bgMusic.current?.pause();
-//             }
-//             return;
-//         }
-
-//         const canvas = canvasRef.current;
-//         const ctx = canvas.getContext('2d')!;
-//         let animationId: number;
-
-//         const handleKeyDown = (e: KeyboardEvent) => {
-//             if (e.key.toLowerCase() === 'p') setGameState('paused');
-//             keys.current[e.key] = true;
-//         };
-//         const handleKeyUp = (e: KeyboardEvent) => keys.current[e.key] = false;
-//         window.addEventListener('keydown', handleKeyDown);
-//         window.addEventListener('keyup', handleKeyUp);
-
-//         const loop = () => {
-//             frame.current++;
-//             const secondsElapsed = Math.floor((Date.now() - startTime.current) / 1000);
-//             const timeDifficultyBoost = Math.floor(secondsElapsed / 10) * 0.8;
-
-//             // --- MOVEMENT + RECOIL (ANTI-CAMP) ---
-//             if (keys.current['a'] || keys.current['ArrowLeft']) player.current.x -= 8;
-//             if (keys.current['d'] || keys.current['ArrowRight']) player.current.x += 8;
-            
-//             player.current.x += player.current.recoil;
-//             player.current.recoil *= 0.92; // Decay recoil over time
-//             player.current.x = Math.max(0, Math.min(canvas.width - player.current.w, player.current.x));
-
-//             // Shooting
-//             if (frame.current % 20 === 0) {
-//                 bullets.current.push({ x: player.current.x + 23, y: player.current.y });
-//                 // Kick the player randomly left or right when shooting
-//                 player.current.recoil = (Math.random() - 0.5) * 12;
-//                 playSound(sfx.current.shoot, 0.1);
-//             }
-
-//             // Spawning
-//             if (frame.current % Math.max(15, 45 - (levelToPlay * 5)) === 0) {
-//                 const rand = Math.random();
-//                 let type = rand > 0.8 ? 'big' : rand > 0.5 ? 'mid' : 'small';
-//                 enemies.current.push({
-//                     x: Math.random() * (canvas.width - 60),
-//                     y: -60,
-//                     w: type === 'small' ? 35 : type === 'mid' ? 55 : 90,
-//                     h: type === 'small' ? 35 : type === 'mid' ? 55 : 90,
-//                     hp: type === 'small' ? 1 : type === 'mid' ? 2 : 3,
-//                     type,
-//                     speed: (type === 'small' ? 6 : type === 'mid' ? 4 : 2.5) + timeDifficultyBoost
-//                 });
-//             }
-
-//             // Update Bullets
-//             bullets.current.forEach((b, bi) => {
-//                 b.y -= 12;
-//                 if (b.y < 0) bullets.current.splice(bi, 1);
-//             });
-
-//             // Update Enemies + Collision
-//             enemies.current.forEach((en, ei) => {
-//                 en.y += en.speed;
-                
-//                 // Bullet collision
-//                 bullets.current.forEach((b, bi) => {
-//                     if (b.x > en.x && b.x < en.x + en.w && b.y < en.y + en.h && b.y > en.y) {
-//                         en.hp--;
-//                         bullets.current.splice(bi, 1);
-//                         if (en.hp <= 0) {
-//                             score.current += en.type === 'small' ? 10 : en.type === 'mid' ? 30 : 50;
-//                             enemies.current.splice(ei, 1);
-//                             playSound(sfx.current.explode, 0.15);
-//                         }
-//                     }
-//                 });
-
-//                 // Player collision
-//                 if (player.current.x < en.x + en.w - 10 && player.current.x + 40 > en.x + 10 && player.current.y < en.y + en.h - 10 && player.current.y + 40 > en.y + 10) {
-//                     setGameState('gameover');
-//                 }
-
-//                 if (en.y > canvas.height) enemies.current.splice(ei, 1);
-//             });
-
-//             // Win Condition
-//             if (score.current >= targetScore) {
-//                 setGameState('win');
-//                 playSound(sfx.current.win, 0.3);
-//             }
-
-//             // DRAWING
-//             ctx.fillStyle = '#050505';
-//             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-//             // Grid lines
-//             ctx.strokeStyle = '#1a1a1a';
-//             ctx.lineWidth = 1;
-//             for (let i = 0; i < canvas.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
-//             for (let i = 0; i < canvas.height; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke(); }
-
-//             // Bullets
-//             ctx.fillStyle = '#A020F0';
-//             bullets.current.forEach(b => ctx.fillRect(b.x, b.y, 4, 15));
-
-//             // Enemies
-//             enemies.current.forEach(en => {
-//                 const color = en.type === 'small' ? '#550000' : en.type === 'mid' ? '#880000' : '#bb0000';
-//                 drawBombEnemy(ctx, en.x, en.y, en.w, color);
-//             });
-
-//             // Player
-//             ctx.drawImage(selectedImg, player.current.x, player.current.y, 50, 50);
-
-//             // Score UI
-//             ctx.fillStyle = 'white';
-//             ctx.font = 'bold 14px monospace';
-//             ctx.fillText(`SCORE: ${score.current} / ${targetScore}`, 20, 30);
-
-//             if (gameState === 'playing') animationId = requestAnimationFrame(loop);
-//         };
-
-//         animationId = requestAnimationFrame(loop);
-//         return () => {
-//             cancelAnimationFrame(animationId);
-//             window.removeEventListener('keydown', handleKeyDown);
-//             window.removeEventListener('keyup', handleKeyUp);
-//         };
-//     }, [gameState, selectedImg, levelToPlay, targetScore]);
-
-//     return (
-//         <div className="relative border-4 border-purple-900/50 bg-black shadow-[0_0_50px_rgba(160,32,240,0.2)] overflow-hidden">
-//             <canvas ref={canvasRef} width={400} height={600} className="block" />
-            
-//             {/* MOBILE CONTROLS: Only visible on touch devices */}
-//             {gameState === 'playing' && (
-//                 <div className="absolute bottom-10 left-0 right-0 flex justify-between px-8 pointer-events-none sm:hidden [@media(hover:none)]:flex">
-//                     <button 
-//                         onPointerDown={() => keys.current['ArrowLeft'] = true}
-//                         onPointerUp={() => keys.current['ArrowLeft'] = false}
-//                         onPointerLeave={() => keys.current['ArrowLeft'] = false}
-//                         className="pointer-events-auto w-20 h-20 bg-white/10 border-2 border-white/20 rounded-full flex items-center justify-center active:bg-purple-500/40 active:border-purple-500 transition-colors"
-//                     >
-//                         <span className="text-white text-3xl font-black">←</span>
-//                     </button>
-//                     <button 
-//                         onPointerDown={() => keys.current['ArrowRight'] = true}
-//                         onPointerUp={() => keys.current['ArrowRight'] = false}
-//                         onPointerLeave={() => keys.current['ArrowRight'] = false}
-//                         className="pointer-events-auto w-20 h-20 bg-white/10 border-2 border-white/20 rounded-full flex items-center justify-center active:bg-purple-500/40 active:border-purple-500 transition-colors"
-//                     >
-//                         <span className="text-white text-3xl font-black">→</span>
-//                     </button>
-//                 </div>
-//             )}
-
-//             {/* UI: Playing / Pause Button */}
-//             {gameState === 'playing' && (
-//                 <button 
-//                     onClick={() => setGameState('paused')} 
-//                     className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 p-2 text-[10px] text-white uppercase font-bold transition-colors"
-//                 >
-//                     Pause (P)
-//                 </button>
-//             )}
-
-//             {/* UI: Selection Screen */}
-//             {gameState === 'selection' && (
-//                 <div className="absolute inset-0 bg-black flex flex-col items-center justify-center p-6 text-center z-10">
-//                     <h2 className="text-2xl font-black mb-8 text-purple-500 uppercase italic tracking-tighter">Select Your Vessel</h2>
-//                     <div className="grid grid-cols-3 gap-4 mb-10">
-//                         {CHARACTERS.map(c => (
-//                             <button 
-//                                 key={c.id} 
-//                                 onClick={() => initGame(c.url)} 
-//                                 className="group border border-white/10 p-2 bg-zinc-900/50 hover:border-purple-500 hover:bg-purple-900/20 transition-all"
-//                             >
-//                                 <img src={c.url} alt={c.name} className="w-16 h-16 object-contain mx-auto" />
-//                                 <p className="text-[8px] text-white/40 mt-1 uppercase font-bold">{c.name}</p>
-//                             </button>
-//                         ))}
-//                     </div>
-//                     <button onClick={onQuit} className="text-[10px] text-zinc-500 uppercase underline hover:text-white transition-colors">Quit Game</button>
-//                 </div>
-//             )}
-
-//             {/* UI: Paused Screen */}
-//             {gameState === 'paused' && (
-//                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
-//                     <h2 className="text-4xl font-black mb-8 text-white italic tracking-widest">SYSTEM PAUSED</h2>
-//                     <button 
-//                         onClick={() => setGameState('playing')} 
-//                         className="bg-purple-600 hover:bg-purple-500 text-white px-12 py-4 font-black uppercase shadow-lg shadow-purple-500/20"
-//                     >
-//                         Resume Engine
-//                     </button>
-//                 </div>
-//             )}
-
-//             {/* UI: Win Screen */}
-//             {gameState === 'win' && (
-//                 <div className="absolute inset-0 bg-zinc-900/90 flex flex-col items-center justify-center p-6 text-center z-30 animate-in fade-in duration-300">
-//                     <div className="border-2 border-purple-500 p-8 bg-black shadow-[0_0_40px_rgba(160,32,240,0.5)]">
-//                         <h2 className="text-4xl font-black mb-2 text-white italic tracking-tighter uppercase">Level Complete</h2>
-//                         <p className="text-purple-400 font-mono text-xs mb-6 uppercase tracking-[0.3em]">Sector Secured</p>
-//                         <div className="mb-8">
-//                             <p className="text-white/40 text-[10px] uppercase font-bold">Data Harvested</p>
-//                             <p className="text-4xl font-black text-white">{score.current}</p>
-//                         </div>
-//                         <button 
-//                             onClick={() => onLevelWin(levelToPlay, score.current)} 
-//                             className="w-full bg-white text-black py-4 font-black uppercase hover:bg-purple-500 hover:text-white transition-all transform active:scale-95"
-//                         >
-//                             Next Level
-//                         </button>
-//                     </div>
-//                 </div>
-//             )}
-
-//             {/* UI: Game Over Screen */}
-//             {gameState === 'gameover' && (
-//                 <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-6 z-40">
-//                     <h2 className="text-6xl font-black mb-2 text-white italic tracking-tighter">WRECKED</h2>
-//                     <p className="mb-10 font-mono text-white/50 text-xs uppercase tracking-widest">Final Score: {score.current}</p>
-//                     <button 
-//                         onClick={() => setGameState('selection')} 
-//                         className="w-full bg-white text-black py-4 font-black uppercase mb-4 hover:bg-red-500 hover:text-white transition-all"
-//                     >
-//                         Restart System
-//                     </button>
-//                     <button onClick={onQuit} className="text-white/40 uppercase text-[10px] underline hover:text-white transition-colors">Abort Mission</button>
-//                 </div>
-//             )}
-//         </div>
-//     );
-// };
-
-
-
-
 'use client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const CHARACTERS = [
-    { id: 1, name: 'Gawker Prime', url: 'https://i.imgur.com/4sBhVbB.png' }, 
+    { id: 1, name: 'Gawker Prime', url: 'https://i.imgur.com/4sBhVbB.png' },
     { id: 2, name: 'Gawker Papi', url: 'https://i.imgur.com/q3JeLr5.png' },
     { id: 3, name: 'Deep Sea', url: 'https://i.imgur.com/fxZVD8Q.png' },
 ];
 
+const TARGET_SCORE: Record<number, number> = { 1: 800, 2: 1500, 3: 3000 };
+const CANVAS_W = 400;
+const CANVAS_H = 600;
+
+type EnemyType = 'small' | 'mid' | 'big' | 'shooter';
+type MovementPattern = 'straight' | 'zigzag' | 'sine';
+
+interface Enemy {
+    x: number; y: number; w: number; h: number;
+    hp: number; maxHp: number;
+    type: EnemyType;
+    speed: number;
+    pattern: MovementPattern;
+    spawnX: number; // original X for wave patterns
+    age: number;    // frames alive (for wave calculation)
+    shootCooldown: number; // frames until next shot (shooter type)
+}
+
+interface EnemyBullet {
+    x: number; y: number; speed: number;
+}
+
 interface GameProps {
     levelToPlay: number;
-    onLevelWin: (level: number, score: number) => void;
+    gameToken: string;
+    onLevelWin: (level: number, score: number, kills: number, timeMs: number) => void;
+    onGameOver: (level: number, score: number, kills: number, timeMs: number) => void;
     onQuit: () => void;
 }
 
-export const GameCanvas = ({ levelToPlay, onLevelWin, onQuit }: GameProps) => {
+export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQuit }: GameProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const wrapperRef = useRef<HTMLDivElement>(null);
     const [gameState, setGameState] = useState<'selection' | 'playing' | 'paused' | 'gameover' | 'win'>('selection');
     const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null);
+    const [scale, setScale] = useState(1);
+    const [finalScore, setFinalScore] = useState(0);
+    const [finalKills, setFinalKills] = useState(0);
+    const [comboDisplay, setComboDisplay] = useState(0);
 
-    const sfx = useRef<{ [key: string]: HTMLAudioElement | null }>({});
+    // Audio
+    const sfx = useRef<Record<string, HTMLAudioElement | null>>({});
     const bgMusic = useRef<HTMLAudioElement | null>(null);
-    const player = useRef({ x: 175, y: 500, w: 50, h: 50, recoil: 0 });
-    const enemies = useRef<any[]>([]);
-    const bullets = useRef<any[]>([]);
+
+    // Game state refs
+    const player = useRef({ x: CANVAS_W / 2 - 25, y: CANVAS_H - 100, w: 50, h: 50, recoil: 0 });
+    const enemies = useRef<Enemy[]>([]);
+    const bullets = useRef<{ x: number; y: number }[]>([]);
+    const enemyBullets = useRef<EnemyBullet[]>([]);
+    const particles = useRef<any[]>([]);
+    const comboTexts = useRef<{ x: number; y: number; text: string; life: number; color: string }[]>([]);
     const score = useRef(0);
+    const kills = useRef(0);
+    const combo = useRef(0);
+    const lastKillTime = useRef(0);
     const frame = useRef(0);
     const startTime = useRef(Date.now());
-    const targetScore = levelToPlay === 1 ? 500 : levelToPlay === 2 ? 1000 : 2000;
-    const keys = useRef<Record<string, boolean>>({});
+    const gameStateRef = useRef(gameState);
+    const shakeRef = useRef(0); // screen shake intensity
+    const targetScore = TARGET_SCORE[levelToPlay] || 800;
 
+    // Input
+    const keys = useRef<Record<string, boolean>>({});
+    const activePointers = useRef<Map<number, string>>(new Map());
+
+    useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+    // Responsive scaling
+    useEffect(() => {
+        const resize = () => {
+            if (!wrapperRef.current) return;
+            const maxW = Math.min(window.innerWidth - 16, CANVAS_W);
+            const maxH = Math.min(window.innerHeight - 16, CANVAS_H);
+            setScale(Math.min(maxW / CANVAS_W, maxH / CANVAS_H));
+        };
+        resize();
+        window.addEventListener('resize', resize);
+        return () => window.removeEventListener('resize', resize);
+    }, []);
+
+    // Audio setup
     useEffect(() => {
         sfx.current = {
             shoot: new Audio('/laser.mp3'),
             explode: new Audio('/explosion.mp3'),
             win: new Audio('/levelup.mp3'),
         };
-        
         bgMusic.current = new Audio('/bg-music.mp3');
-        if (bgMusic.current) {
-            bgMusic.current.loop = true;
-            bgMusic.current.volume = 0.15;
-        }
-
-        return () => {
-            if (bgMusic.current) {
-                bgMusic.current.pause();
-                bgMusic.current.currentTime = 0;
-            }
-        };
+        if (bgMusic.current) { bgMusic.current.loop = true; bgMusic.current.volume = 0.15; }
+        return () => { bgMusic.current?.pause(); bgMusic.current = null; };
     }, []);
 
-    const resumeAudio = () => {
-        if (bgMusic.current && bgMusic.current.paused) {
-            bgMusic.current.play().catch(() => {});
-        }
+    const playSound = (sound: HTMLAudioElement | null | undefined, vol = 0.2) => {
+        if (!sound) return;
+        const clone = sound.cloneNode() as HTMLAudioElement;
+        clone.volume = vol;
+        clone.play().catch(() => {});
     };
 
-    const playSound = (sound: HTMLAudioElement | undefined | null, vol = 0.2) => {
-        if (sound) {
-            const clone = sound.cloneNode() as HTMLAudioElement;
-            clone.volume = vol;
-            clone.play().catch(() => {}); 
-        }
-    };
+    const clearAllInput = useCallback(() => {
+        keys.current = {};
+        activePointers.current.clear();
+    }, []);
 
     const initGame = (url: string) => {
-        resumeAudio();
         const img = new window.Image();
-        img.crossOrigin = "anonymous";
+        img.crossOrigin = 'anonymous';
         img.src = url;
         img.onload = () => {
             setSelectedImg(img);
             setGameState('playing');
+            bgMusic.current?.play().catch(() => {});
             score.current = 0;
+            kills.current = 0;
+            combo.current = 0;
+            lastKillTime.current = 0;
             enemies.current = [];
             bullets.current = [];
+            enemyBullets.current = [];
+            particles.current = [];
+            comboTexts.current = [];
             frame.current = 0;
-            player.current.x = 175;
+            shakeRef.current = 0;
+            player.current.x = CANVAS_W / 2 - 25;
+            player.current.y = CANVAS_H - 100;
             player.current.recoil = 0;
             startTime.current = Date.now();
+            clearAllInput();
         };
     };
 
-    const drawBombEnemy = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) => {
+    // Touch controls
+    const handlePointerDown = useCallback((direction: string, pointerId: number) => {
+        activePointers.current.set(pointerId, direction);
+        keys.current[direction] = true;
+    }, []);
+
+    const handlePointerEnd = useCallback((pointerId: number) => {
+        const direction = activePointers.current.get(pointerId);
+        if (direction) {
+            activePointers.current.delete(pointerId);
+            let stillHeld = false;
+            activePointers.current.forEach((dir) => { if (dir === direction) stillHeld = true; });
+            if (!stillHeld) keys.current[direction] = false;
+        }
+    }, []);
+
+    useEffect(() => {
+        const onUp = (e: PointerEvent) => handlePointerEnd(e.pointerId);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+        return () => { window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); };
+    }, [handlePointerEnd]);
+
+    // Spawn particles
+    const spawnParticles = (x: number, y: number, color: string, count = 6) => {
+        for (let i = 0; i < count; i++) {
+            particles.current.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8,
+                life: 15 + Math.random() * 10,
+                color,
+                size: 2 + Math.random() * 3,
+            });
+        }
+    };
+
+    // Draw enemy
+    const drawEnemy = (ctx: CanvasRenderingContext2D, en: Enemy) => {
         ctx.save();
-        ctx.translate(x + size / 2, y + size / 2);
-        ctx.fillStyle = color;
+        const cx = en.x + en.w / 2, cy = en.y + en.h / 2, r = en.w / 2;
+
+        ctx.shadowColor = en.type === 'shooter' ? '#ffaa00' : en.type === 'big' ? '#ff0044' : en.type === 'mid' ? '#ff6600' : '#ff3333';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = en.type === 'shooter' ? '#cc8800' : en.type === 'big' ? '#cc0033' : en.type === 'mid' ? '#cc4400' : '#993333';
         ctx.beginPath();
-        ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-size / 4, -size / 6, size / 6, size / 6);
-        ctx.fillRect(size / 10, -size / 6, size / 6, size / 6);
-        ctx.fillStyle = 'red';
-        ctx.fillRect(-size / 4 + 2, -size / 6 + 2, 3, 3);
-        ctx.fillRect(size / 10 + 2, -size / 6 + 2, 3, 3);
+        ctx.shadowBlur = 0;
+
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(cx - r * 0.35, cy - r * 0.2, r * 0.25, r * 0.25);
+        ctx.fillRect(cx + r * 0.1, cy - r * 0.2, r * 0.25, r * 0.25);
+        ctx.fillStyle = en.type === 'shooter' ? '#ffaa00' : '#ff0000';
+        ctx.fillRect(cx - r * 0.3, cy - r * 0.15, r * 0.12, r * 0.12);
+        ctx.fillRect(cx + r * 0.15, cy - r * 0.15, r * 0.12, r * 0.12);
+
+        // Shooter indicator — small gun barrel
+        if (en.type === 'shooter') {
+            ctx.fillStyle = '#ffcc00';
+            ctx.fillRect(cx - 2, cy + r - 2, 4, 6);
+        }
+
         ctx.restore();
     };
 
+    // ═══ GAME LOOP ═══
     useEffect(() => {
         if (gameState !== 'playing' || !canvasRef.current || !selectedImg) {
-            if (gameState === 'gameover' || gameState === 'selection') {
-                bgMusic.current?.pause();
-            }
+            if (gameState === 'gameover' || gameState === 'selection') bgMusic.current?.pause();
             return;
         }
 
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d')!;
-        let animationId: number;
+        let animId: number;
 
-        const handleKeyDown = (e: KeyboardEvent) => {
+        const onKeyDown = (e: KeyboardEvent) => {
             if (e.key.toLowerCase() === 'p') setGameState('paused');
             keys.current[e.key] = true;
         };
-        const handleKeyUp = (e: KeyboardEvent) => keys.current[e.key] = false;
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
+        const onKeyUp = (e: KeyboardEvent) => { keys.current[e.key] = false; };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
 
         const loop = () => {
-            if (bgMusic.current && bgMusic.current.paused && gameState === 'playing') {
-                bgMusic.current.play().catch(() => {});
-            }
+            if (gameStateRef.current !== 'playing') return;
 
             frame.current++;
-            const secondsElapsed = Math.floor((Date.now() - startTime.current) / 1000);
-            const timeDifficultyBoost = Math.floor(secondsElapsed / 10) * 0.8;
+            const elapsed = (Date.now() - startTime.current) / 1000;
+            const diffBoost = Math.floor(elapsed / 8) * 0.5; // faster ramp: every 8s instead of 10
 
-            if (keys.current['a'] || keys.current['ArrowLeft'] || keys.current['left']) player.current.x -= 8;
-            if (keys.current['d'] || keys.current['ArrowRight'] || keys.current['right']) player.current.x += 8;
-            
-            player.current.x += player.current.recoil;
-            player.current.recoil *= 0.92;
-            player.current.x = Math.max(0, Math.min(canvas.width - player.current.w, player.current.x));
-
-            if (frame.current % 20 === 0) {
-                bullets.current.push({ x: player.current.x + 23, y: player.current.y });
-                player.current.recoil = (Math.random() - 0.5) * 12;
-                playSound(sfx.current.shoot, 0.1);
+            // ─── COMBO DECAY ───
+            if (Date.now() - lastKillTime.current > 1500 && combo.current > 0) {
+                combo.current = 0;
             }
 
-            if (frame.current % Math.max(15, 45 - (levelToPlay * 5)) === 0) {
+            // ─── MOVEMENT ───
+            const moveSpeed = 7;
+            if (keys.current['a'] || keys.current['ArrowLeft'] || keys.current['left']) player.current.x -= moveSpeed;
+            if (keys.current['d'] || keys.current['ArrowRight'] || keys.current['right']) player.current.x += moveSpeed;
+            player.current.x += player.current.recoil;
+            player.current.recoil *= 0.9;
+            if (Math.abs(player.current.recoil) < 0.1) player.current.recoil = 0;
+            player.current.x = Math.max(0, Math.min(CANVAS_W - player.current.w, player.current.x));
+
+            // ─── SHOOTING (auto) ───
+            if (frame.current % 18 === 0) {
+                bullets.current.push({ x: player.current.x + 23, y: player.current.y });
+                player.current.recoil = (Math.random() - 0.5) * 8;
+                playSound(sfx.current.shoot, 0.06);
+            }
+
+            // ─── SPAWN ENEMIES ───
+            const baseRate = Math.max(10, 38 - (levelToPlay * 5) - Math.floor(diffBoost * 3));
+            if (frame.current % baseRate === 0) {
                 const rand = Math.random();
-                let type = rand > 0.8 ? 'big' : rand > 0.5 ? 'mid' : 'small';
+                let type: EnemyType;
+                let pattern: MovementPattern = 'straight';
+
+                if (levelToPlay >= 2 && rand > 0.88) {
+                    type = 'shooter';
+                } else if (rand > 0.82) {
+                    type = 'big';
+                } else if (rand > 0.45) {
+                    type = 'mid';
+                } else {
+                    type = 'small';
+                }
+
+                // Movement patterns — more common in higher levels
+                const patternRoll = Math.random();
+                if (levelToPlay >= 2 && patternRoll > 0.6) {
+                    pattern = 'zigzag';
+                } else if (levelToPlay >= 3 && patternRoll > 0.4) {
+                    pattern = patternRoll > 0.7 ? 'sine' : 'zigzag';
+                } else if (patternRoll > 0.8) {
+                    pattern = 'zigzag'; // even level 1 gets some
+                }
+
+                const size = type === 'small' ? 30 : type === 'mid' ? 48 : type === 'shooter' ? 42 : 76;
+                const spawnX = Math.random() * (CANVAS_W - size);
+
                 enemies.current.push({
-                    x: Math.random() * (canvas.width - 60),
-                    y: -60,
-                    w: type === 'small' ? 35 : type === 'mid' ? 55 : 90,
-                    h: type === 'small' ? 35 : type === 'mid' ? 55 : 90,
-                    hp: type === 'small' ? 1 : type === 'mid' ? 2 : 3,
-                    type,
-                    speed: (type === 'small' ? 6 : type === 'mid' ? 4 : 2.5) + timeDifficultyBoost
+                    x: spawnX, y: -size, w: size, h: size,
+                    hp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
+                    maxHp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
+                    type, pattern,
+                    speed: (type === 'small' ? 4 : type === 'mid' ? 2.8 : type === 'shooter' ? 2 : 1.8) + diffBoost,
+                    spawnX,
+                    age: 0,
+                    shootCooldown: 60 + Math.floor(Math.random() * 40), // 1-1.7s before first shot
                 });
             }
 
-            bullets.current.forEach((b, bi) => {
-                b.y -= 12;
-                if (b.y < 0) bullets.current.splice(bi, 1);
-            });
+            // ─── UPDATE PLAYER BULLETS ───
+            for (let i = bullets.current.length - 1; i >= 0; i--) {
+                bullets.current[i].y -= 14;
+                if (bullets.current[i].y < -10) bullets.current.splice(i, 1);
+            }
 
-            enemies.current.forEach((en, ei) => {
+            // ─── UPDATE ENEMY BULLETS ───
+            for (let i = enemyBullets.current.length - 1; i >= 0; i--) {
+                const eb = enemyBullets.current[i];
+                eb.y += eb.speed;
+                if (eb.y > CANVAS_H + 10) { enemyBullets.current.splice(i, 1); continue; }
+
+                // Hit player?
+                const px = player.current.x + 8, py = player.current.y + 8;
+                const pw = player.current.w - 16, ph = player.current.h - 16;
+                if (eb.x > px && eb.x < px + pw && eb.y > py && eb.y < py + ph) {
+                    const timeMs = Date.now() - startTime.current;
+                    setFinalScore(score.current);
+                    setFinalKills(kills.current);
+                    setGameState('gameover');
+                    clearAllInput();
+                    onGameOver(levelToPlay, score.current, kills.current, timeMs);
+                    return;
+                }
+            }
+
+            // ─── UPDATE ENEMIES ───
+            for (let ei = enemies.current.length - 1; ei >= 0; ei--) {
+                const en = enemies.current[ei];
+                en.age++;
+
+                // Movement patterns
                 en.y += en.speed;
-                bullets.current.forEach((b, bi) => {
+                if (en.pattern === 'zigzag') {
+                    en.x = en.spawnX + Math.sin(en.age * 0.08) * 60;
+                } else if (en.pattern === 'sine') {
+                    en.x = en.spawnX + Math.sin(en.age * 0.05) * 40 + Math.cos(en.age * 0.12) * 20;
+                }
+                // Keep in bounds
+                en.x = Math.max(0, Math.min(CANVAS_W - en.w, en.x));
+
+                // Shooter enemies fire back
+                if (en.type === 'shooter' && en.y > 40 && en.y < CANVAS_H - 100) {
+                    en.shootCooldown--;
+                    if (en.shootCooldown <= 0) {
+                        enemyBullets.current.push({
+                            x: en.x + en.w / 2,
+                            y: en.y + en.h,
+                            speed: 5 + diffBoost * 0.3,
+                        });
+                        en.shootCooldown = 50 + Math.floor(Math.random() * 30); // 0.8-1.3s
+                    }
+                }
+
+                // Bullet-enemy collision
+                for (let bi = bullets.current.length - 1; bi >= 0; bi--) {
+                    const b = bullets.current[bi];
                     if (b.x > en.x && b.x < en.x + en.w && b.y < en.y + en.h && b.y > en.y) {
                         en.hp--;
                         bullets.current.splice(bi, 1);
                         if (en.hp <= 0) {
-                            score.current += en.type === 'small' ? 10 : en.type === 'mid' ? 30 : 50;
+                            // Combo logic
+                            const now = Date.now();
+                            if (now - lastKillTime.current < 1500) {
+                                combo.current++;
+                            } else {
+                                combo.current = 1;
+                            }
+                            lastKillTime.current = now;
+
+                            const basePoints = en.type === 'small' ? 10 : en.type === 'mid' ? 30 : en.type === 'shooter' ? 50 : 80;
+                            const multiplier = Math.min(combo.current, 8); // cap at x8
+                            const pts = basePoints * multiplier;
+                            score.current += pts;
+                            kills.current++;
+
+                            // Combo text popup
+                            if (multiplier > 1) {
+                                comboTexts.current.push({
+                                    x: en.x + en.w / 2,
+                                    y: en.y,
+                                    text: `+${pts} x${multiplier}`,
+                                    life: 40,
+                                    color: multiplier >= 5 ? '#ffcc00' : multiplier >= 3 ? '#ff8800' : '#A020F0',
+                                });
+                                setComboDisplay(multiplier);
+                            } else {
+                                comboTexts.current.push({
+                                    x: en.x + en.w / 2, y: en.y,
+                                    text: `+${pts}`, life: 25, color: '#fff',
+                                });
+                                setComboDisplay(0);
+                            }
+
+                            const particleColor = en.type === 'shooter' ? '#ffaa00' : en.type === 'big' ? '#ff0044' : '#ff4444';
+                            spawnParticles(en.x + en.w / 2, en.y + en.h / 2, particleColor, en.type === 'big' ? 12 : 6);
+                            shakeRef.current = en.type === 'big' ? 6 : 3;
                             enemies.current.splice(ei, 1);
-                            playSound(sfx.current.explode, 0.15);
+                            playSound(sfx.current.explode, 0.12);
+                            break;
                         }
                     }
-                });
-
-                if (player.current.x < en.x + en.w - 10 && player.current.x + 40 > en.x + 10 && player.current.y < en.y + en.h - 10 && player.current.y + 40 > en.y + 10) {
-                    setGameState('gameover');
                 }
-                if (en.y > canvas.height) enemies.current.splice(ei, 1);
-            });
 
-            if (score.current >= targetScore) {
-                setGameState('win');
-                playSound(sfx.current.win, 0.3);
+                // Player-enemy body collision
+                if (enemies.current[ei]) {
+                    const e = enemies.current[ei];
+                    const px = player.current.x + 6, py = player.current.y + 6;
+                    const pw = player.current.w - 12, ph = player.current.h - 12;
+                    if (px < e.x + e.w - 5 && px + pw > e.x + 5 && py < e.y + e.h - 5 && py + ph > e.y + 5) {
+                        const timeMs = Date.now() - startTime.current;
+                        setFinalScore(score.current);
+                        setFinalKills(kills.current);
+                        setGameState('gameover');
+                        clearAllInput();
+                        onGameOver(levelToPlay, score.current, kills.current, timeMs);
+                        return;
+                    }
+                    if (e.y > CANVAS_H + 20) enemies.current.splice(ei, 1);
+                }
             }
 
+            // ─── UPDATE PARTICLES ───
+            for (let i = particles.current.length - 1; i >= 0; i--) {
+                const p = particles.current[i];
+                p.x += p.vx; p.y += p.vy;
+                p.vx *= 0.96; p.vy *= 0.96;
+                p.life--;
+                if (p.life <= 0) particles.current.splice(i, 1);
+            }
+
+            // ─── UPDATE COMBO TEXTS ───
+            for (let i = comboTexts.current.length - 1; i >= 0; i--) {
+                comboTexts.current[i].y -= 1.2;
+                comboTexts.current[i].life--;
+                if (comboTexts.current[i].life <= 0) comboTexts.current.splice(i, 1);
+            }
+
+            // ─── SCREEN SHAKE DECAY ───
+            shakeRef.current *= 0.85;
+            if (shakeRef.current < 0.3) shakeRef.current = 0;
+
+            // ─── WIN CHECK ───
+            if (score.current >= targetScore) {
+                const timeMs = Date.now() - startTime.current;
+                setFinalScore(score.current);
+                setFinalKills(kills.current);
+                setGameState('win');
+                clearAllInput();
+                playSound(sfx.current.win, 0.3);
+                onLevelWin(levelToPlay, score.current, kills.current, timeMs);
+                return;
+            }
+
+            // ═══ DRAWING ═══
+            ctx.save();
+
+            // Apply screen shake
+            if (shakeRef.current > 0) {
+                const sx = (Math.random() - 0.5) * shakeRef.current * 2;
+                const sy = (Math.random() - 0.5) * shakeRef.current * 2;
+                ctx.translate(sx, sy);
+            }
+
+            // Background
             ctx.fillStyle = '#050505';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#1a1a1a';
+            ctx.fillRect(-5, -5, CANVAS_W + 10, CANVAS_H + 10);
+
+            // Grid
+            ctx.strokeStyle = '#111';
             ctx.lineWidth = 1;
-            for (let i = 0; i < canvas.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke(); }
-            for (let i = 0; i < canvas.height; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke(); }
-            ctx.fillStyle = '#A020F0';
-            bullets.current.forEach(b => ctx.fillRect(b.x, b.y, 4, 15));
-            enemies.current.forEach(en => {
-                const color = en.type === 'small' ? '#550000' : en.type === 'mid' ? '#880000' : '#bb0000';
-                drawBombEnemy(ctx, en.x, en.y, en.w, color);
+            for (let i = 0; i < CANVAS_W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_H); ctx.stroke(); }
+            for (let i = 0; i < CANVAS_H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CANVAS_W, i); ctx.stroke(); }
+
+            // Particles
+            particles.current.forEach(p => {
+                ctx.globalAlpha = p.life / 25;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
             });
+            ctx.globalAlpha = 1;
+
+            // Player bullets (glowing)
+            ctx.shadowColor = '#A020F0';
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = '#A020F0';
+            bullets.current.forEach(b => ctx.fillRect(b.x, b.y, 4, 14));
+            ctx.shadowBlur = 0;
+
+            // Enemy bullets (orange/yellow glow)
+            ctx.shadowColor = '#ff6600';
+            ctx.shadowBlur = 5;
+            ctx.fillStyle = '#ffaa00';
+            enemyBullets.current.forEach(eb => {
+                ctx.beginPath();
+                ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            // Enemies
+            enemies.current.forEach(en => {
+                drawEnemy(ctx, en);
+                // HP bar
+                if (en.maxHp > 1 && en.hp < en.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(en.x, en.y - 8, en.w, 4);
+                    const hpPct = en.hp / en.maxHp;
+                    ctx.fillStyle = hpPct > 0.5 ? '#22c55e' : '#ef4444';
+                    ctx.fillRect(en.x, en.y - 8, en.w * hpPct, 4);
+                }
+            });
+
+            // Player
             ctx.drawImage(selectedImg, player.current.x, player.current.y, 50, 50);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 14px monospace';
-            ctx.fillText(`SCORE: ${score.current} / ${targetScore}`, 20, 30);
 
-            if (gameState === 'playing') animationId = requestAnimationFrame(loop);
+            // Combo text popups
+            comboTexts.current.forEach(ct => {
+                ctx.globalAlpha = Math.min(ct.life / 15, 1);
+                ctx.fillStyle = ct.color;
+                ctx.font = 'bold 14px "Pixelify Sans", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(ct.text, ct.x, ct.y);
+            });
+            ctx.globalAlpha = 1;
+            ctx.textAlign = 'left';
+
+            // ─── HUD ───
+            ctx.fillStyle = '#A020F0';
+            ctx.font = 'bold 12px "Pixelify Sans", monospace';
+            ctx.fillText('SCORE', 16, 24);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px "Pixelify Sans", monospace';
+            ctx.fillText(`${score.current}`, 16, 44);
+
+            // Progress bar
+            const barY = 54;
+            const barW = 120;
+            const pct = Math.min(score.current / targetScore, 1);
+            ctx.fillStyle = 'rgba(255,255,255,0.06)';
+            ctx.fillRect(16, barY, barW, 6);
+            ctx.fillStyle = '#A020F0';
+            ctx.fillRect(16, barY, barW * pct, 6);
+            ctx.fillStyle = 'rgba(255,255,255,0.25)';
+            ctx.font = '10px monospace';
+            ctx.fillText(`${targetScore} TO WIN`, 16, barY + 18);
+
+            // Combo indicator
+            if (combo.current > 1) {
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 16px "Pixelify Sans", monospace';
+                ctx.fillStyle = combo.current >= 5 ? '#ffcc00' : combo.current >= 3 ? '#ff8800' : '#A020F0';
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(`x${combo.current} COMBO`, CANVAS_W / 2, 30);
+                ctx.globalAlpha = 1;
+                ctx.textAlign = 'left';
+            }
+
+            // Level + warning indicator
+            ctx.fillStyle = 'rgba(160,32,240,0.3)';
+            ctx.font = 'bold 10px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`LVL ${levelToPlay}`, CANVAS_W - 16, 24);
+            if (levelToPlay >= 2) {
+                ctx.fillStyle = 'rgba(255,170,0,0.3)';
+                ctx.fillText('⚠ SHOOTERS', CANVAS_W - 16, 38);
+            }
+            ctx.textAlign = 'left';
+
+            ctx.restore();
+            animId = requestAnimationFrame(loop);
         };
 
-        animationId = requestAnimationFrame(loop);
+        animId = requestAnimationFrame(loop);
         return () => {
-            cancelAnimationFrame(animationId);
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
+            cancelAnimationFrame(animId);
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
         };
-    }, [gameState, selectedImg, levelToPlay, targetScore]);
+    }, [gameState, selectedImg, levelToPlay, targetScore, clearAllInput, onLevelWin, onGameOver]);
 
     return (
-        <div className="relative border-2 border-purple-900/50 bg-black shadow-[0_0_2px_rgba(160,32,240,0.2)] overflow-hidden select-none touch-none">
-            <canvas ref={canvasRef} width={400} height={600} className="block" />
-            
+        <div
+            ref={wrapperRef}
+            className="relative overflow-hidden select-none"
+            style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, touchAction: 'none' }}
+        >
+            <canvas
+                ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
+                className="block origin-top-left"
+                style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, imageRendering: 'pixelated' }}
+            />
+
+            {/* Mobile controls */}
             {gameState === 'playing' && (
-                <div className="absolute bottom-6 left-0 right-0 flex justify-between px-6 pointer-events-none sm:hidden [@media(hover:none)]:flex">
-                    <button 
-                        onPointerDown={(e) => { e.preventDefault(); keys.current['left'] = true; }}
-                        onPointerUp={(e) => { e.preventDefault(); keys.current['left'] = false; }}
-                        onPointerLeave={(e) => { e.preventDefault(); keys.current['left'] = false; }}
-                        className="pointer-events-auto w-16 h-16 bg-white/5 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center active:scale-90 active:bg-purple-500/40 transition-all select-none touch-none"
+                <>
+                    <div
+                        className="absolute left-2 sm:left-4"
+                        style={{ bottom: Math.max(12, 12 * scale) }}
+                        onPointerDown={(e) => { e.preventDefault(); handlePointerDown('left', e.pointerId); }}
+                        onPointerUp={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
+                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
                     >
-                        <span className="text-white text-2xl">←</span>
-                    </button>
-                    <button 
-                        onPointerDown={(e) => { e.preventDefault(); keys.current['right'] = true; }}
-                        onPointerUp={(e) => { e.preventDefault(); keys.current['right'] = false; }}
-                        onPointerLeave={(e) => { e.preventDefault(); keys.current['right'] = false; }}
-                        className="pointer-events-auto w-16 h-16 bg-white/5 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center active:scale-90 active:bg-purple-500/40 transition-all select-none touch-none"
+                        <div className="flex items-center justify-center bg-white/[0.06] border border-white/[0.15] rounded-full active:bg-[#A020F0]/30 active:border-[#A020F0]/50 transition-colors"
+                            style={{ width: Math.max(48, 56 * scale), height: Math.max(48, 56 * scale), touchAction: 'none' }}>
+                            <span className="text-white/60 text-xl font-bold select-none">◀</span>
+                        </div>
+                    </div>
+                    <div
+                        className="absolute right-2 sm:right-4"
+                        style={{ bottom: Math.max(12, 12 * scale) }}
+                        onPointerDown={(e) => { e.preventDefault(); handlePointerDown('right', e.pointerId); }}
+                        onPointerUp={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
+                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
                     >
-                        <span className="text-white text-2xl">→</span>
+                        <div className="flex items-center justify-center bg-white/[0.06] border border-white/[0.15] rounded-full active:bg-[#A020F0]/30 active:border-[#A020F0]/50 transition-colors"
+                            style={{ width: Math.max(48, 56 * scale), height: Math.max(48, 56 * scale), touchAction: 'none' }}>
+                            <span className="text-white/60 text-xl font-bold select-none">▶</span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => { setGameState('paused'); clearAllInput(); }}
+                        className="absolute top-3 right-3 bg-black/40 border border-white/10 px-3 py-1.5 font-mono uppercase text-white/60 hover:text-white transition-colors"
+                        style={{ fontSize: 10, letterSpacing: '0.1em' }}>
+                        ❚❚
                     </button>
-                </div>
+                </>
             )}
 
-            {gameState === 'playing' && (
-                <button onClick={() => setGameState('paused')} className="absolute top-4 right-4 bg-white/10 p-2 text-[10px] text-white uppercase font-bold">Pause (P)</button>
-            )}
-
+            {/* CHARACTER SELECTION */}
             {gameState === 'selection' && (
-                <div className="absolute inset-0 bg-black flex flex-col items-center justify-center p-6 text-center z-10">
-                    <h2 className="text-2xl font-black mb-8 text-purple-500 uppercase italic">Select Your Vessel</h2>
-                    <div className="grid grid-cols-3 gap-4 mb-10">
+                <div className="absolute inset-0 bg-[#050505] flex flex-col items-center justify-center p-6 text-center z-10">
+                    <div className="font-mono uppercase text-[#A020F0] mb-1" style={{ fontSize: 10, letterSpacing: '0.2em' }}>Choose</div>
+                    <h2 className="text-2xl font-bold mb-8 text-white uppercase italic font-pixel">Your Vessel</h2>
+                    <div className="grid grid-cols-3 gap-3 mb-8">
                         {CHARACTERS.map(c => (
-                            <button key={c.id} onClick={() => initGame(c.url)} className="group border border-white/10 p-2 bg-zinc-900/50 hover:border-purple-500 transition-all">
-                                <img src={c.url} alt={c.name} className="w-16 h-16 object-contain mx-auto" />
-                                <p className="text-[8px] text-white/40 mt-1 uppercase font-bold">{c.name}</p>
+                            <button key={c.id} onClick={() => initGame(c.url)}
+                                className="border border-white/10 p-3 bg-white/[0.02] hover:border-[#A020F0] hover:bg-[#A020F0]/10 transition-all group">
+                                <img src={c.url} alt={c.name} className="w-14 h-14 object-contain mx-auto group-hover:scale-110 transition-transform" />
+                                <p className="font-mono text-white/30 mt-2 uppercase font-bold group-hover:text-[#A020F0]" style={{ fontSize: 8 }}>{c.name}</p>
                             </button>
                         ))}
                     </div>
-                    <button onClick={onQuit} className="text-[10px] text-zinc-500 uppercase underline hover:text-white">Quit Game</button>
+                    <button onClick={onQuit} className="font-mono text-zinc-600 uppercase hover:text-white transition-colors" style={{ fontSize: 10 }}>← Back to Hub</button>
                 </div>
             )}
 
+            {/* PAUSED */}
             {gameState === 'paused' && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
-                    <h2 className="text-4xl font-black mb-8 text-white italic">SYSTEM PAUSED</h2>
-                    <button onClick={() => setGameState('playing')} className="bg-purple-600 text-white px-12 py-4 font-black uppercase">Resume Engine</button>
+                <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center z-20">
+                    <h2 className="text-3xl font-bold mb-2 text-white italic font-pixel">PAUSED</h2>
+                    <p className="font-mono text-zinc-500 mb-8" style={{ fontSize: 10, letterSpacing: '0.2em' }}>PRESS TO CONTINUE</p>
+                    <button onClick={() => setGameState('playing')} className="bg-[#A020F0] text-black px-10 py-3 font-bold uppercase font-pixel hover:bg-white transition-all mb-4">Resume</button>
+                    <button onClick={onQuit} className="font-mono text-zinc-600 uppercase hover:text-white transition-colors" style={{ fontSize: 10 }}>Quit Game</button>
                 </div>
             )}
 
+            {/* WIN */}
             {gameState === 'win' && (
-                <div className="absolute inset-0 bg-zinc-900/95 flex flex-col items-center justify-center p-6 text-center z-30">
-                    <div className="border-2 border-purple-500 p-8 bg-black">
-                        <h2 className="text-4xl font-black mb-2 text-white italic uppercase">Level Complete</h2>
-                        <p className="text-purple-400 font-mono text-xs mb-6 uppercase">Sector Secured</p>
-                        <button 
-                            onClick={() => onLevelWin(levelToPlay, score.current)} 
-                            className="w-full bg-white text-black py-4 font-black uppercase hover:bg-purple-500 hover:text-white mb-4"
-                        >
-                            Next Level
-                        </button>
-                        <button 
-                            onClick={onQuit}
-                            className="text-[10px] text-zinc-500 uppercase hover:text-white tracking-widest"
-                        >
-                            Relax Your Fingers
-                        </button>
+                <div className="absolute inset-0 bg-[#050505]/95 flex flex-col items-center justify-center p-6 text-center z-30">
+                    <div className="border border-[#A020F0]/40 p-8 bg-black/80 max-w-[280px] w-full">
+                        <div className="font-mono text-[#A020F0] mb-1 uppercase" style={{ fontSize: 10, letterSpacing: '0.3em' }}>Sector Clear</div>
+                        <h2 className="text-3xl font-bold mb-6 text-white italic font-pixel uppercase">Level {levelToPlay}</h2>
+                        <div className="grid grid-cols-2 gap-4 mb-8">
+                            <div>
+                                <div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Score</div>
+                                <div className="text-2xl font-bold text-white font-pixel">{finalScore}</div>
+                            </div>
+                            <div>
+                                <div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Kills</div>
+                                <div className="text-2xl font-bold text-white font-pixel">{finalKills}</div>
+                            </div>
+                        </div>
+                        <button onClick={onQuit} className="w-full bg-[#A020F0] text-black py-3 font-bold uppercase font-pixel hover:bg-white transition-all">Continue</button>
                     </div>
                 </div>
             )}
 
+            {/* GAME OVER */}
             {gameState === 'gameover' && (
                 <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-6 z-40">
-                    <h2 className="text-6xl font-black mb-2 text-white italic">WRECKED</h2>
-                    <p className="mb-10 font-mono text-white/50 text-xs">Final Score: {score.current}</p>
-                    <button onClick={() => setGameState('selection')} className="w-full bg-white text-black py-4 font-black uppercase mb-4 hover:bg-red-500 transition-all">Restart System</button>
-                    <button onClick={onQuit} className="text-white/40 uppercase text-[10px] underline">Abort Mission</button>
+                    <h2 className="text-4xl font-bold mb-1 text-white italic font-pixel">WRECKED</h2>
+                    <p className="font-mono text-white/40 mb-8 uppercase" style={{ fontSize: 10, letterSpacing: '0.2em' }}>Score: {finalScore}</p>
+                    <button onClick={onQuit} className="w-full max-w-[240px] bg-white text-black py-3 font-bold uppercase font-pixel hover:bg-red-500 hover:text-white transition-all mb-3">Try Again</button>
+                    <button onClick={onQuit} className="font-mono text-white/30 uppercase hover:text-white transition-colors" style={{ fontSize: 10 }}>Quit</button>
                 </div>
             )}
         </div>
