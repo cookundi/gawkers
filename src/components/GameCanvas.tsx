@@ -20,9 +20,9 @@ interface Enemy {
     type: EnemyType;
     speed: number;
     pattern: MovementPattern;
-    spawnX: number; // original X for wave patterns
-    age: number;    // frames alive (for wave calculation)
-    shootCooldown: number; // frames until next shot (shooter type)
+    spawnX: number;
+    age: number;
+    shootCooldown: number;
 }
 
 interface EnemyBullet {
@@ -34,10 +34,11 @@ interface GameProps {
     gameToken: string;
     onLevelWin: (level: number, score: number, kills: number, timeMs: number) => void;
     onGameOver: (level: number, score: number, kills: number, timeMs: number) => void;
+    onRetry: (level: number) => Promise<string>; // returns new game token
     onQuit: () => void;
 }
 
-export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQuit }: GameProps) => {
+export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onRetry, onQuit }: GameProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [gameState, setGameState] = useState<'selection' | 'playing' | 'paused' | 'gameover' | 'win'>('selection');
@@ -45,7 +46,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
     const [scale, setScale] = useState(1);
     const [finalScore, setFinalScore] = useState(0);
     const [finalKills, setFinalKills] = useState(0);
-    const [comboDisplay, setComboDisplay] = useState(0);
+    const [retrying, setRetrying] = useState(false);
 
     // Audio
     const sfx = useRef<Record<string, HTMLAudioElement | null>>({});
@@ -57,22 +58,25 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
     const bullets = useRef<{ x: number; y: number }[]>([]);
     const enemyBullets = useRef<EnemyBullet[]>([]);
     const particles = useRef<any[]>([]);
-    const comboTexts = useRef<{ x: number; y: number; text: string; life: number; color: string }[]>([]);
+    const floatTexts = useRef<{ x: number; y: number; text: string; life: number; color: string }[]>([]);
     const score = useRef(0);
     const kills = useRef(0);
-    const combo = useRef(0);
-    const lastKillTime = useRef(0);
     const frame = useRef(0);
     const startTime = useRef(Date.now());
     const gameStateRef = useRef(gameState);
-    const shakeRef = useRef(0); // screen shake intensity
+    const shakeRef = useRef(0);
+    const currentTokenRef = useRef(gameToken);
     const targetScore = TARGET_SCORE[levelToPlay] || 800;
+
+    // Big-kill streak: 3 consecutive big-enemy kills → 2x on the 3rd
+    const bigKillStreak = useRef(0);
 
     // Input
     const keys = useRef<Record<string, boolean>>({});
     const activePointers = useRef<Map<number, string>>(new Map());
 
     useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+    useEffect(() => { currentTokenRef.current = gameToken; }, [gameToken]);
 
     // Responsive scaling
     useEffect(() => {
@@ -111,6 +115,25 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
         activePointers.current.clear();
     }, []);
 
+    // Reset game state (used by both initGame and retry)
+    const resetGameState = useCallback(() => {
+        score.current = 0;
+        kills.current = 0;
+        bigKillStreak.current = 0;
+        enemies.current = [];
+        bullets.current = [];
+        enemyBullets.current = [];
+        particles.current = [];
+        floatTexts.current = [];
+        frame.current = 0;
+        shakeRef.current = 0;
+        player.current.x = CANVAS_W / 2 - 25;
+        player.current.y = CANVAS_H - 100;
+        player.current.recoil = 0;
+        startTime.current = Date.now();
+        clearAllInput();
+    }, [clearAllInput]);
+
     const initGame = (url: string) => {
         const img = new window.Image();
         img.crossOrigin = 'anonymous';
@@ -119,23 +142,26 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
             setSelectedImg(img);
             setGameState('playing');
             bgMusic.current?.play().catch(() => {});
-            score.current = 0;
-            kills.current = 0;
-            combo.current = 0;
-            lastKillTime.current = 0;
-            enemies.current = [];
-            bullets.current = [];
-            enemyBullets.current = [];
-            particles.current = [];
-            comboTexts.current = [];
-            frame.current = 0;
-            shakeRef.current = 0;
-            player.current.x = CANVAS_W / 2 - 25;
-            player.current.y = CANVAS_H - 100;
-            player.current.recoil = 0;
-            startTime.current = Date.now();
-            clearAllInput();
+            resetGameState();
         };
+    };
+
+    // Instant retry — same character, same level, new token
+    const handleRetry = async () => {
+        if (retrying) return;
+        setRetrying(true);
+        try {
+            const newToken = await onRetry(levelToPlay);
+            currentTokenRef.current = newToken;
+            resetGameState();
+            setGameState('playing');
+            bgMusic.current?.play().catch(() => {});
+        } catch {
+            // If token fetch fails, fall back to hub
+            onQuit();
+        } finally {
+            setRetrying(false);
+        }
     };
 
     // Touch controls
@@ -161,7 +187,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
         return () => { window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); };
     }, [handlePointerEnd]);
 
-    // Spawn particles
+    // Particles
     const spawnParticles = (x: number, y: number, color: string, count = 6) => {
         for (let i = 0; i < count; i++) {
             particles.current.push({
@@ -179,29 +205,18 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
     const drawEnemy = (ctx: CanvasRenderingContext2D, en: Enemy) => {
         ctx.save();
         const cx = en.x + en.w / 2, cy = en.y + en.h / 2, r = en.w / 2;
-
         ctx.shadowColor = en.type === 'shooter' ? '#ffaa00' : en.type === 'big' ? '#ff0044' : en.type === 'mid' ? '#ff6600' : '#ff3333';
         ctx.shadowBlur = 8;
         ctx.fillStyle = en.type === 'shooter' ? '#cc8800' : en.type === 'big' ? '#cc0033' : en.type === 'mid' ? '#cc4400' : '#993333';
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
-
-        // Eyes
         ctx.fillStyle = '#fff';
         ctx.fillRect(cx - r * 0.35, cy - r * 0.2, r * 0.25, r * 0.25);
         ctx.fillRect(cx + r * 0.1, cy - r * 0.2, r * 0.25, r * 0.25);
         ctx.fillStyle = en.type === 'shooter' ? '#ffaa00' : '#ff0000';
         ctx.fillRect(cx - r * 0.3, cy - r * 0.15, r * 0.12, r * 0.12);
         ctx.fillRect(cx + r * 0.15, cy - r * 0.15, r * 0.12, r * 0.12);
-
-        // Shooter indicator — small gun barrel
-        if (en.type === 'shooter') {
-            ctx.fillStyle = '#ffcc00';
-            ctx.fillRect(cx - 2, cy + r - 2, 4, 6);
-        }
-
+        if (en.type === 'shooter') { ctx.fillStyle = '#ffcc00'; ctx.fillRect(cx - 2, cy + r - 2, 4, 6); }
         ctx.restore();
     };
 
@@ -229,14 +244,9 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
 
             frame.current++;
             const elapsed = (Date.now() - startTime.current) / 1000;
-            const diffBoost = Math.floor(elapsed / 8) * 0.5; // faster ramp: every 8s instead of 10
+            const diffBoost = Math.floor(elapsed / 8) * 0.5;
 
-            // ─── COMBO DECAY ───
-            if (Date.now() - lastKillTime.current > 1500 && combo.current > 0) {
-                combo.current = 0;
-            }
-
-            // ─── MOVEMENT ───
+            // Movement
             const moveSpeed = 7;
             if (keys.current['a'] || keys.current['ArrowLeft'] || keys.current['left']) player.current.x -= moveSpeed;
             if (keys.current['d'] || keys.current['ArrowRight'] || keys.current['right']) player.current.x += moveSpeed;
@@ -245,39 +255,29 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
             if (Math.abs(player.current.recoil) < 0.1) player.current.recoil = 0;
             player.current.x = Math.max(0, Math.min(CANVAS_W - player.current.w, player.current.x));
 
-            // ─── SHOOTING (auto) ───
+            // Auto-shoot
             if (frame.current % 18 === 0) {
                 bullets.current.push({ x: player.current.x + 23, y: player.current.y });
                 player.current.recoil = (Math.random() - 0.5) * 8;
                 playSound(sfx.current.shoot, 0.06);
             }
 
-            // ─── SPAWN ENEMIES ───
+            // Spawn enemies
             const baseRate = Math.max(10, 38 - (levelToPlay * 5) - Math.floor(diffBoost * 3));
             if (frame.current % baseRate === 0) {
                 const rand = Math.random();
                 let type: EnemyType;
                 let pattern: MovementPattern = 'straight';
 
-                if (levelToPlay >= 2 && rand > 0.88) {
-                    type = 'shooter';
-                } else if (rand > 0.82) {
-                    type = 'big';
-                } else if (rand > 0.45) {
-                    type = 'mid';
-                } else {
-                    type = 'small';
-                }
+                if (levelToPlay >= 2 && rand > 0.88) type = 'shooter';
+                else if (rand > 0.82) type = 'big';
+                else if (rand > 0.45) type = 'mid';
+                else type = 'small';
 
-                // Movement patterns — more common in higher levels
                 const patternRoll = Math.random();
-                if (levelToPlay >= 2 && patternRoll > 0.6) {
-                    pattern = 'zigzag';
-                } else if (levelToPlay >= 3 && patternRoll > 0.4) {
-                    pattern = patternRoll > 0.7 ? 'sine' : 'zigzag';
-                } else if (patternRoll > 0.8) {
-                    pattern = 'zigzag'; // even level 1 gets some
-                }
+                if (levelToPlay >= 2 && patternRoll > 0.6) pattern = 'zigzag';
+                else if (levelToPlay >= 3 && patternRoll > 0.4) pattern = patternRoll > 0.7 ? 'sine' : 'zigzag';
+                else if (patternRoll > 0.8) pattern = 'zigzag';
 
                 const size = type === 'small' ? 30 : type === 'mid' ? 48 : type === 'shooter' ? 42 : 76;
                 const spawnX = Math.random() * (CANVAS_W - size);
@@ -288,63 +288,48 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                     maxHp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
                     type, pattern,
                     speed: (type === 'small' ? 4 : type === 'mid' ? 2.8 : type === 'shooter' ? 2 : 1.8) + diffBoost,
-                    spawnX,
-                    age: 0,
-                    shootCooldown: 60 + Math.floor(Math.random() * 40), // 1-1.7s before first shot
+                    spawnX, age: 0,
+                    shootCooldown: 60 + Math.floor(Math.random() * 40),
                 });
             }
 
-            // ─── UPDATE PLAYER BULLETS ───
+            // Update player bullets
             for (let i = bullets.current.length - 1; i >= 0; i--) {
                 bullets.current[i].y -= 14;
                 if (bullets.current[i].y < -10) bullets.current.splice(i, 1);
             }
 
-            // ─── UPDATE ENEMY BULLETS ───
+            // Update enemy bullets
             for (let i = enemyBullets.current.length - 1; i >= 0; i--) {
                 const eb = enemyBullets.current[i];
                 eb.y += eb.speed;
                 if (eb.y > CANVAS_H + 10) { enemyBullets.current.splice(i, 1); continue; }
-
-                // Hit player?
                 const px = player.current.x + 8, py = player.current.y + 8;
                 const pw = player.current.w - 16, ph = player.current.h - 16;
                 if (eb.x > px && eb.x < px + pw && eb.y > py && eb.y < py + ph) {
                     const timeMs = Date.now() - startTime.current;
-                    setFinalScore(score.current);
-                    setFinalKills(kills.current);
-                    setGameState('gameover');
-                    clearAllInput();
+                    setFinalScore(score.current); setFinalKills(kills.current);
+                    setGameState('gameover'); clearAllInput();
                     onGameOver(levelToPlay, score.current, kills.current, timeMs);
                     return;
                 }
             }
 
-            // ─── UPDATE ENEMIES ───
+            // Update enemies
             for (let ei = enemies.current.length - 1; ei >= 0; ei--) {
                 const en = enemies.current[ei];
                 en.age++;
-
-                // Movement patterns
                 en.y += en.speed;
-                if (en.pattern === 'zigzag') {
-                    en.x = en.spawnX + Math.sin(en.age * 0.08) * 60;
-                } else if (en.pattern === 'sine') {
-                    en.x = en.spawnX + Math.sin(en.age * 0.05) * 40 + Math.cos(en.age * 0.12) * 20;
-                }
-                // Keep in bounds
+                if (en.pattern === 'zigzag') en.x = en.spawnX + Math.sin(en.age * 0.08) * 60;
+                else if (en.pattern === 'sine') en.x = en.spawnX + Math.sin(en.age * 0.05) * 40 + Math.cos(en.age * 0.12) * 20;
                 en.x = Math.max(0, Math.min(CANVAS_W - en.w, en.x));
 
-                // Shooter enemies fire back
+                // Shooter fires
                 if (en.type === 'shooter' && en.y > 40 && en.y < CANVAS_H - 100) {
                     en.shootCooldown--;
                     if (en.shootCooldown <= 0) {
-                        enemyBullets.current.push({
-                            x: en.x + en.w / 2,
-                            y: en.y + en.h,
-                            speed: 5 + diffBoost * 0.3,
-                        });
-                        en.shootCooldown = 50 + Math.floor(Math.random() * 30); // 0.8-1.3s
+                        enemyBullets.current.push({ x: en.x + en.w / 2, y: en.y + en.h, speed: 5 + diffBoost * 0.3 });
+                        en.shootCooldown = 50 + Math.floor(Math.random() * 30);
                     }
                 }
 
@@ -355,37 +340,32 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                         en.hp--;
                         bullets.current.splice(bi, 1);
                         if (en.hp <= 0) {
-                            // Combo logic
-                            const now = Date.now();
-                            if (now - lastKillTime.current < 1500) {
-                                combo.current++;
-                            } else {
-                                combo.current = 1;
-                            }
-                            lastKillTime.current = now;
-
+                            // ─── BIG-KILL STREAK LOGIC ───
                             const basePoints = en.type === 'small' ? 10 : en.type === 'mid' ? 30 : en.type === 'shooter' ? 50 : 80;
-                            const multiplier = Math.min(combo.current, 8); // cap at x8
-                            const pts = basePoints * multiplier;
+                            let pts = basePoints;
+                            let showMultiplier = false;
+
+                            if (en.type === 'big') {
+                                bigKillStreak.current++;
+                                if (bigKillStreak.current >= 3) {
+                                    // 3rd consecutive big kill → 2x on this kill only
+                                    pts = basePoints * 2;
+                                    showMultiplier = true;
+                                    bigKillStreak.current = 0; // reset after reward
+                                }
+                            } else {
+                                // Any non-big kill resets the streak
+                                bigKillStreak.current = 0;
+                            }
+
                             score.current += pts;
                             kills.current++;
 
-                            // Combo text popup
-                            if (multiplier > 1) {
-                                comboTexts.current.push({
-                                    x: en.x + en.w / 2,
-                                    y: en.y,
-                                    text: `+${pts} x${multiplier}`,
-                                    life: 40,
-                                    color: multiplier >= 5 ? '#ffcc00' : multiplier >= 3 ? '#ff8800' : '#A020F0',
-                                });
-                                setComboDisplay(multiplier);
+                            // Float text
+                            if (showMultiplier) {
+                                floatTexts.current.push({ x: en.x + en.w / 2, y: en.y, text: `+${pts} 2x!`, life: 50, color: '#ffcc00' });
                             } else {
-                                comboTexts.current.push({
-                                    x: en.x + en.w / 2, y: en.y,
-                                    text: `+${pts}`, life: 25, color: '#fff',
-                                });
-                                setComboDisplay(0);
+                                floatTexts.current.push({ x: en.x + en.w / 2, y: en.y, text: `+${pts}`, life: 25, color: '#fff' });
                             }
 
                             const particleColor = en.type === 'shooter' ? '#ffaa00' : en.type === 'big' ? '#ff0044' : '#ff4444';
@@ -398,17 +378,15 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                     }
                 }
 
-                // Player-enemy body collision
+                // Player-enemy collision
                 if (enemies.current[ei]) {
                     const e = enemies.current[ei];
                     const px = player.current.x + 6, py = player.current.y + 6;
                     const pw = player.current.w - 12, ph = player.current.h - 12;
                     if (px < e.x + e.w - 5 && px + pw > e.x + 5 && py < e.y + e.h - 5 && py + ph > e.y + 5) {
                         const timeMs = Date.now() - startTime.current;
-                        setFinalScore(score.current);
-                        setFinalKills(kills.current);
-                        setGameState('gameover');
-                        clearAllInput();
+                        setFinalScore(score.current); setFinalKills(kills.current);
+                        setGameState('gameover'); clearAllInput();
                         onGameOver(levelToPlay, score.current, kills.current, timeMs);
                         return;
                     }
@@ -416,33 +394,28 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                 }
             }
 
-            // ─── UPDATE PARTICLES ───
+            // Update particles
             for (let i = particles.current.length - 1; i >= 0; i--) {
                 const p = particles.current[i];
-                p.x += p.vx; p.y += p.vy;
-                p.vx *= 0.96; p.vy *= 0.96;
-                p.life--;
+                p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy *= 0.96; p.life--;
                 if (p.life <= 0) particles.current.splice(i, 1);
             }
 
-            // ─── UPDATE COMBO TEXTS ───
-            for (let i = comboTexts.current.length - 1; i >= 0; i--) {
-                comboTexts.current[i].y -= 1.2;
-                comboTexts.current[i].life--;
-                if (comboTexts.current[i].life <= 0) comboTexts.current.splice(i, 1);
+            // Update float texts
+            for (let i = floatTexts.current.length - 1; i >= 0; i--) {
+                floatTexts.current[i].y -= 1.2; floatTexts.current[i].life--;
+                if (floatTexts.current[i].life <= 0) floatTexts.current.splice(i, 1);
             }
 
-            // ─── SCREEN SHAKE DECAY ───
+            // Screen shake decay
             shakeRef.current *= 0.85;
             if (shakeRef.current < 0.3) shakeRef.current = 0;
 
-            // ─── WIN CHECK ───
+            // Win check
             if (score.current >= targetScore) {
                 const timeMs = Date.now() - startTime.current;
-                setFinalScore(score.current);
-                setFinalKills(kills.current);
-                setGameState('win');
-                clearAllInput();
+                setFinalScore(score.current); setFinalKills(kills.current);
+                setGameState('win'); clearAllInput();
                 playSound(sfx.current.win, 0.3);
                 onLevelWin(levelToPlay, score.current, kills.current, timeMs);
                 return;
@@ -450,117 +423,70 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
 
             // ═══ DRAWING ═══
             ctx.save();
-
-            // Apply screen shake
-            if (shakeRef.current > 0) {
-                const sx = (Math.random() - 0.5) * shakeRef.current * 2;
-                const sy = (Math.random() - 0.5) * shakeRef.current * 2;
-                ctx.translate(sx, sy);
-            }
-
-            // Background
-            ctx.fillStyle = '#050505';
-            ctx.fillRect(-5, -5, CANVAS_W + 10, CANVAS_H + 10);
-
-            // Grid
-            ctx.strokeStyle = '#111';
-            ctx.lineWidth = 1;
+            if (shakeRef.current > 0) ctx.translate((Math.random() - 0.5) * shakeRef.current * 2, (Math.random() - 0.5) * shakeRef.current * 2);
+            ctx.fillStyle = '#050505'; ctx.fillRect(-5, -5, CANVAS_W + 10, CANVAS_H + 10);
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
             for (let i = 0; i < CANVAS_W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_H); ctx.stroke(); }
             for (let i = 0; i < CANVAS_H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CANVAS_W, i); ctx.stroke(); }
 
             // Particles
             particles.current.forEach(p => {
-                ctx.globalAlpha = p.life / 25;
-                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 25; ctx.fillStyle = p.color;
                 ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
             });
             ctx.globalAlpha = 1;
 
-            // Player bullets (glowing)
-            ctx.shadowColor = '#A020F0';
-            ctx.shadowBlur = 6;
-            ctx.fillStyle = '#A020F0';
+            // Player bullets
+            ctx.shadowColor = '#A020F0'; ctx.shadowBlur = 6; ctx.fillStyle = '#A020F0';
             bullets.current.forEach(b => ctx.fillRect(b.x, b.y, 4, 14));
             ctx.shadowBlur = 0;
 
-            // Enemy bullets (orange/yellow glow)
-            ctx.shadowColor = '#ff6600';
-            ctx.shadowBlur = 5;
-            ctx.fillStyle = '#ffaa00';
-            enemyBullets.current.forEach(eb => {
-                ctx.beginPath();
-                ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2);
-                ctx.fill();
-            });
+            // Enemy bullets
+            ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 5; ctx.fillStyle = '#ffaa00';
+            enemyBullets.current.forEach(eb => { ctx.beginPath(); ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2); ctx.fill(); });
             ctx.shadowBlur = 0;
 
-            // Enemies
+            // Enemies + HP bars
             enemies.current.forEach(en => {
                 drawEnemy(ctx, en);
-                // HP bar
                 if (en.maxHp > 1 && en.hp < en.maxHp) {
-                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                    ctx.fillRect(en.x, en.y - 8, en.w, 4);
-                    const hpPct = en.hp / en.maxHp;
-                    ctx.fillStyle = hpPct > 0.5 ? '#22c55e' : '#ef4444';
-                    ctx.fillRect(en.x, en.y - 8, en.w * hpPct, 4);
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(en.x, en.y - 8, en.w, 4);
+                    ctx.fillStyle = en.hp / en.maxHp > 0.5 ? '#22c55e' : '#ef4444';
+                    ctx.fillRect(en.x, en.y - 8, en.w * (en.hp / en.maxHp), 4);
                 }
             });
 
             // Player
             ctx.drawImage(selectedImg, player.current.x, player.current.y, 50, 50);
 
-            // Combo text popups
-            comboTexts.current.forEach(ct => {
-                ctx.globalAlpha = Math.min(ct.life / 15, 1);
-                ctx.fillStyle = ct.color;
-                ctx.font = 'bold 14px "Pixelify Sans", monospace';
-                ctx.textAlign = 'center';
+            // Float texts
+            floatTexts.current.forEach(ct => {
+                ctx.globalAlpha = Math.min(ct.life / 15, 1); ctx.fillStyle = ct.color;
+                ctx.font = 'bold 14px "Pixelify Sans", monospace'; ctx.textAlign = 'center';
                 ctx.fillText(ct.text, ct.x, ct.y);
             });
-            ctx.globalAlpha = 1;
-            ctx.textAlign = 'left';
+            ctx.globalAlpha = 1; ctx.textAlign = 'left';
 
-            // ─── HUD ───
-            ctx.fillStyle = '#A020F0';
-            ctx.font = 'bold 12px "Pixelify Sans", monospace';
-            ctx.fillText('SCORE', 16, 24);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 18px "Pixelify Sans", monospace';
-            ctx.fillText(`${score.current}`, 16, 44);
+            // HUD
+            ctx.fillStyle = '#A020F0'; ctx.font = 'bold 12px "Pixelify Sans", monospace'; ctx.fillText('SCORE', 16, 24);
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 18px "Pixelify Sans", monospace'; ctx.fillText(`${score.current}`, 16, 44);
+            const barY = 54, barW = 120, pct = Math.min(score.current / targetScore, 1);
+            ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(16, barY, barW, 6);
+            ctx.fillStyle = '#A020F0'; ctx.fillRect(16, barY, barW * pct, 6);
+            ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '10px monospace'; ctx.fillText(`${targetScore} TO WIN`, 16, barY + 18);
 
-            // Progress bar
-            const barY = 54;
-            const barW = 120;
-            const pct = Math.min(score.current / targetScore, 1);
-            ctx.fillStyle = 'rgba(255,255,255,0.06)';
-            ctx.fillRect(16, barY, barW, 6);
-            ctx.fillStyle = '#A020F0';
-            ctx.fillRect(16, barY, barW * pct, 6);
-            ctx.fillStyle = 'rgba(255,255,255,0.25)';
-            ctx.font = '10px monospace';
-            ctx.fillText(`${targetScore} TO WIN`, 16, barY + 18);
-
-            // Combo indicator
-            if (combo.current > 1) {
-                ctx.textAlign = 'center';
-                ctx.font = 'bold 16px "Pixelify Sans", monospace';
-                ctx.fillStyle = combo.current >= 5 ? '#ffcc00' : combo.current >= 3 ? '#ff8800' : '#A020F0';
-                ctx.globalAlpha = 0.8;
-                ctx.fillText(`x${combo.current} COMBO`, CANVAS_W / 2, 30);
-                ctx.globalAlpha = 1;
-                ctx.textAlign = 'left';
+            // Big-kill streak indicator
+            if (bigKillStreak.current > 0) {
+                ctx.textAlign = 'center'; ctx.font = 'bold 12px "Pixelify Sans", monospace';
+                ctx.fillStyle = bigKillStreak.current >= 2 ? '#ffcc00' : '#ff4444';
+                ctx.globalAlpha = 0.7;
+                ctx.fillText(`BIG STREAK: ${bigKillStreak.current}/3`, CANVAS_W / 2, 30);
+                ctx.globalAlpha = 1; ctx.textAlign = 'left';
             }
 
-            // Level + warning indicator
-            ctx.fillStyle = 'rgba(160,32,240,0.3)';
-            ctx.font = 'bold 10px monospace';
-            ctx.textAlign = 'right';
+            ctx.fillStyle = 'rgba(160,32,240,0.3)'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'right';
             ctx.fillText(`LVL ${levelToPlay}`, CANVAS_W - 16, 24);
-            if (levelToPlay >= 2) {
-                ctx.fillStyle = 'rgba(255,170,0,0.3)';
-                ctx.fillText('⚠ SHOOTERS', CANVAS_W - 16, 38);
-            }
+            if (levelToPlay >= 2) { ctx.fillStyle = 'rgba(255,170,0,0.3)'; ctx.fillText('⚠ SHOOTERS', CANVAS_W - 16, 38); }
             ctx.textAlign = 'left';
 
             ctx.restore();
@@ -568,58 +494,39 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
         };
 
         animId = requestAnimationFrame(loop);
-        return () => {
-            cancelAnimationFrame(animId);
-            window.removeEventListener('keydown', onKeyDown);
-            window.removeEventListener('keyup', onKeyUp);
-        };
+        return () => { cancelAnimationFrame(animId); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
     }, [gameState, selectedImg, levelToPlay, targetScore, clearAllInput, onLevelWin, onGameOver]);
 
     return (
-        <div
-            ref={wrapperRef}
-            className="relative overflow-hidden select-none"
-            style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, touchAction: 'none' }}
-        >
-            <canvas
-                ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
-                className="block origin-top-left"
-                style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, imageRendering: 'pixelated' }}
-            />
+        <div ref={wrapperRef} className="relative overflow-hidden select-none"
+            style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, touchAction: 'none' }}>
+            <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="block origin-top-left"
+                style={{ width: CANVAS_W * scale, height: CANVAS_H * scale, imageRendering: 'pixelated' }} />
 
             {/* Mobile controls */}
             {gameState === 'playing' && (
                 <>
-                    <div
-                        className="absolute left-2 sm:left-4"
-                        style={{ bottom: Math.max(12, 12 * scale) }}
+                    <div className="absolute left-2 sm:left-4" style={{ bottom: Math.max(12, 12 * scale) }}
                         onPointerDown={(e) => { e.preventDefault(); handlePointerDown('left', e.pointerId); }}
                         onPointerUp={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
-                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
-                    >
+                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}>
                         <div className="flex items-center justify-center bg-white/[0.06] border border-white/[0.15] rounded-full active:bg-[#A020F0]/30 active:border-[#A020F0]/50 transition-colors"
                             style={{ width: Math.max(48, 56 * scale), height: Math.max(48, 56 * scale), touchAction: 'none' }}>
                             <span className="text-white/60 text-xl font-bold select-none">◀</span>
                         </div>
                     </div>
-                    <div
-                        className="absolute right-2 sm:right-4"
-                        style={{ bottom: Math.max(12, 12 * scale) }}
+                    <div className="absolute right-2 sm:right-4" style={{ bottom: Math.max(12, 12 * scale) }}
                         onPointerDown={(e) => { e.preventDefault(); handlePointerDown('right', e.pointerId); }}
                         onPointerUp={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
-                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}
-                    >
+                        onPointerCancel={(e) => { e.preventDefault(); handlePointerEnd(e.pointerId); }}>
                         <div className="flex items-center justify-center bg-white/[0.06] border border-white/[0.15] rounded-full active:bg-[#A020F0]/30 active:border-[#A020F0]/50 transition-colors"
                             style={{ width: Math.max(48, 56 * scale), height: Math.max(48, 56 * scale), touchAction: 'none' }}>
                             <span className="text-white/60 text-xl font-bold select-none">▶</span>
                         </div>
                     </div>
-                    <button
-                        onClick={() => { setGameState('paused'); clearAllInput(); }}
+                    <button onClick={() => { setGameState('paused'); clearAllInput(); }}
                         className="absolute top-3 right-3 bg-black/40 border border-white/10 px-3 py-1.5 font-mono uppercase text-white/60 hover:text-white transition-colors"
-                        style={{ fontSize: 10, letterSpacing: '0.1em' }}>
-                        ❚❚
-                    </button>
+                        style={{ fontSize: 10, letterSpacing: '0.1em' }}>❚❚</button>
                 </>
             )}
 
@@ -658,14 +565,8 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                         <div className="font-mono text-[#A020F0] mb-1 uppercase" style={{ fontSize: 10, letterSpacing: '0.3em' }}>Sector Clear</div>
                         <h2 className="text-3xl font-bold mb-6 text-white italic font-pixel uppercase">Level {levelToPlay}</h2>
                         <div className="grid grid-cols-2 gap-4 mb-8">
-                            <div>
-                                <div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Score</div>
-                                <div className="text-2xl font-bold text-white font-pixel">{finalScore}</div>
-                            </div>
-                            <div>
-                                <div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Kills</div>
-                                <div className="text-2xl font-bold text-white font-pixel">{finalKills}</div>
-                            </div>
+                            <div><div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Score</div><div className="text-2xl font-bold text-white font-pixel">{finalScore}</div></div>
+                            <div><div className="font-mono text-zinc-500 uppercase" style={{ fontSize: 9 }}>Kills</div><div className="text-2xl font-bold text-white font-pixel">{finalKills}</div></div>
                         </div>
                         <button onClick={onQuit} className="w-full bg-[#A020F0] text-black py-3 font-bold uppercase font-pixel hover:bg-white transition-all">Continue</button>
                     </div>
@@ -677,7 +578,13 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onQ
                 <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-6 z-40">
                     <h2 className="text-4xl font-bold mb-1 text-white italic font-pixel">WRECKED</h2>
                     <p className="font-mono text-white/40 mb-8 uppercase" style={{ fontSize: 10, letterSpacing: '0.2em' }}>Score: {finalScore}</p>
-                    <button onClick={onQuit} className="w-full max-w-[240px] bg-white text-black py-3 font-bold uppercase font-pixel hover:bg-red-500 hover:text-white transition-all mb-3">Try Again</button>
+                    <button
+                        onClick={handleRetry}
+                        disabled={retrying}
+                        className="w-full max-w-[240px] bg-white text-black py-3 font-bold uppercase font-pixel hover:bg-red-500 hover:text-white transition-all mb-3 disabled:opacity-50"
+                    >
+                        {retrying ? 'Loading...' : 'Try Again'}
+                    </button>
                     <button onClick={onQuit} className="font-mono text-white/30 uppercase hover:text-white transition-colors" style={{ fontSize: 10 }}>Quit</button>
                 </div>
             )}

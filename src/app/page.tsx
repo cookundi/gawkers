@@ -24,7 +24,6 @@ type Player = {
     recent_scores?: any[];
 };
 
-// ─── Custom Loader ───
 function GawkerLoader({ text = 'Initializing' }: { text?: string }) {
     const [dots, setDots] = useState('');
     useEffect(() => {
@@ -38,14 +37,11 @@ function GawkerLoader({ text = 'Initializing' }: { text?: string }) {
                     <div key={i} className="loader-cell" style={{ animationDelay: `${i * 0.1}s` }} />
                 ))}
             </div>
-            <span className="font-mono text-zinc-500 uppercase" style={{ fontSize: 10, letterSpacing: '0.2em' }}>
-                {text}{dots}
-            </span>
+            <span className="font-mono text-zinc-500 uppercase" style={{ fontSize: 10, letterSpacing: '0.2em' }}>{text}{dots}</span>
         </div>
     );
 }
 
-// ─── Avatar ───
 function Avatar({ src, handle, size = 32 }: { src?: string | null; handle: string; size?: number }) {
     const [error, setError] = useState(false);
     if (!src || error) {
@@ -97,13 +93,28 @@ export default function Home() {
         setPlayer(null); setView('auth');
     };
 
+    // Start a level — fetches anti-cheat token
+    const fetchGameToken = async (level: number): Promise<string> => {
+        const res = await fetch('/api/game-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level }) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        return data.token;
+    };
+
     const startLevel = async (level: number) => {
         try {
-            const res = await fetch('/api/game-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level }) });
-            const data = await res.json();
-            if (data.error) { alert(data.error); return; }
-            setActiveLevel(level); setGameToken(data.token); setView('game');
-        } catch { alert('Failed to start game'); }
+            const token = await fetchGameToken(level);
+            setActiveLevel(level);
+            setGameToken(token);
+            setView('game');
+        } catch (e: any) { alert(e.message || 'Failed to start game'); }
+    };
+
+    // Called by GameCanvas on retry — fetches a new token, returns it
+    const handleRetry = async (level: number): Promise<string> => {
+        const token = await fetchGameToken(level);
+        setGameToken(token);
+        return token;
     };
 
     const submitScore = async (level: number, score: number, kills: number, timeMs: number) => {
@@ -134,7 +145,6 @@ export default function Home() {
     useEffect(() => { if (view === 'profile') refreshProfile(); }, [view, refreshProfile]);
     useEffect(() => { if (view === 'hub' && player) refreshProfile(); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Helper: get per-level best
     const getLevelBest = (lvl: number): number => {
         if (!player?.level_bests) return 0;
         const found = player.level_bests.find((lb: LevelBest) => lb.level === lvl);
@@ -159,7 +169,7 @@ export default function Home() {
                 <div className="z-10 flex flex-col items-center justify-center min-h-screen px-6 w-full max-w-md">
                     <h1 className="text-5xl sm:text-6xl font-bold italic text-[#A020F0] font-pixel mb-2 tracking-tighter">GAWKERS.</h1>
                     <p className="font-mono text-zinc-600 uppercase mb-12" style={{ fontSize: 10, letterSpacing: '0.3em' }}>The Gauntlet</p>
-                    <a href="/api/auth/twitter" className="w-full flex items-center justify-center gap-3 bg-white text-black font-bold uppercase font-pixel py-4 hover:bg-[#A020F0] hover:text-black transition-all" style={{ fontSize: 14, letterSpacing: '0.05em' }}>
+                    <a href="/api/auth/twitter" className="w-full flex items-center justify-center gap-3 bg-white text-black font-bold uppercase font-pixel py-4 hover:bg-[#A020F0] hover:text-black transition-all no-underline" style={{ fontSize: 14, letterSpacing: '0.05em' }}>
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                         Connect with X
                     </a>
@@ -185,7 +195,6 @@ export default function Home() {
                         </div>
                     </header>
 
-                    {/* Quick Stats */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-0.5 mb-10">
                         {[
                             { label: 'Total Score', value: (player.total_score || 0).toLocaleString() },
@@ -200,7 +209,6 @@ export default function Home() {
                         ))}
                     </div>
 
-                    {/* Progress */}
                     <div className="mb-10">
                         <div className="flex justify-between items-center mb-2">
                             <span className="font-mono text-zinc-500 uppercase" style={{ fontSize: 10, letterSpacing: '0.15em' }}>Gauntlet Progress</span>
@@ -213,7 +221,6 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* Level Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         {[1, 2, 3].map((lvl) => {
                             const locked = lvl > player.current_level;
@@ -230,9 +237,7 @@ export default function Home() {
                                     <span className="font-mono text-zinc-700 mt-1" style={{ fontSize: 9 }}>
                                         {lvl === 1 ? '800 pts' : lvl === 2 ? '1,500 pts' : '3,000 pts'}
                                     </span>
-                                    {levelBest > 0 && (
-                                        <span className="font-mono text-zinc-500 mt-1" style={{ fontSize: 8 }}>Best: {levelBest}</span>
-                                    )}
+                                    {levelBest > 0 && <span className="font-mono text-zinc-500 mt-1" style={{ fontSize: 8 }}>Best: {levelBest}</span>}
                                     {cleared && <div className="absolute top-3 right-3 bg-green-500/10 border border-green-500/20 text-green-400 font-mono font-bold px-2 py-0.5" style={{ fontSize: 8 }}>✓</div>}
                                 </button>
                             );
@@ -244,10 +249,14 @@ export default function Home() {
             {/* ═══ GAME ═══ */}
             {view === 'game' && (
                 <div className="z-10 flex items-center justify-center min-h-screen p-2">
-                    <GameCanvas levelToPlay={activeLevel} gameToken={gameToken}
+                    <GameCanvas
+                        levelToPlay={activeLevel}
+                        gameToken={gameToken}
                         onLevelWin={(lvl, sc, k, t) => submitScore(lvl, sc, k, t)}
                         onGameOver={(lvl, sc, k, t) => submitScore(lvl, sc, k, t)}
-                        onQuit={handleQuitGame} />
+                        onRetry={handleRetry}
+                        onQuit={handleQuitGame}
+                    />
                 </div>
             )}
 
@@ -329,7 +338,6 @@ export default function Home() {
                         )}
                     </div>
 
-                    {/* Overall Stats */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-0.5 mb-8">
                         {[
                             { label: 'Total Score', value: (player.total_score || 0).toLocaleString(), accent: true },
@@ -346,7 +354,6 @@ export default function Home() {
                         ))}
                     </div>
 
-                    {/* Per-Level Bests */}
                     <div className="mb-8">
                         <h3 className="font-mono text-zinc-500 uppercase mb-3" style={{ fontSize: 10, letterSpacing: '0.15em' }}>Best Score Per Level</h3>
                         <div className="grid grid-cols-3 gap-0.5">
@@ -369,7 +376,6 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* Progress */}
                     <div className="mb-8">
                         <div className="flex justify-between mb-2">
                             <span className="font-mono text-zinc-500 uppercase" style={{ fontSize: 10 }}>Gauntlet Progress</span>
@@ -380,7 +386,6 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* Recent Games */}
                     {player.recent_scores && player.recent_scores.length > 0 && (
                         <div>
                             <h3 className="font-mono text-zinc-500 uppercase mb-3" style={{ fontSize: 10, letterSpacing: '0.15em' }}>Recent Games</h3>
