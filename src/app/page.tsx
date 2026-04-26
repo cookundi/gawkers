@@ -174,7 +174,7 @@ export default function Home() {
                         Connect with X
                     </a>
                     {authError && <p className="font-mono text-red-400 mt-4 text-center" style={{ fontSize: 11 }}>{authError}</p>}
-                    <p className="font-mono text-zinc-700 mt-8 text-center leading-relaxed" style={{ fontSize: 10 }}>Top 300 gamers who clear Level 3 earns GawkLord free mint.</p>
+                    <p className="font-mono text-zinc-700 mt-8 text-center leading-relaxed" style={{ fontSize: 10 }}>Top 300 gamers who clear Level 3 earns GawkLord <b> (Gawkers Free Mint Phase)</b> </p>
                 </div>
             )}
 
