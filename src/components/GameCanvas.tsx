@@ -2,8 +2,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const CHARACTERS = [
-    { id: 1, name: 'Gawker Prime', url: 'https://i.imgur.com/4sBhVbB.png' },
-    { id: 2, name: 'Gawker Papi', url: 'https://i.imgur.com/q3JeLr5.png' },
+    { id: 1, name: 'Steezed Gawker', url: 'https://i.imgur.com/4sBhVbB.png' },
+    { id: 2, name: 'Gawk Papi', url: 'https://i.imgur.com/q3JeLr5.png' },
     { id: 3, name: 'Deep Sea', url: 'https://i.imgur.com/fxZVD8Q.png' },
 ];
 

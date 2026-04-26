@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-    title: 'GAWKERS — The Gauntlet',
+    title: 'Gauntlet - By Gawkers',
     description: 'Pixel-art gaming powerhouse on Ethereum. Play to earn your mint.',
 };
 

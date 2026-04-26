@@ -167,14 +167,14 @@ export default function Home() {
             {/* ═══ AUTH ═══ */}
             {view === 'auth' && (
                 <div className="z-10 flex flex-col items-center justify-center min-h-screen px-6 w-full max-w-md">
-                    <h1 className="text-5xl sm:text-6xl font-bold italic text-[#A020F0] font-pixel mb-2 tracking-tighter">GAWKERS.</h1>
-                    <p className="font-mono text-zinc-600 uppercase mb-12" style={{ fontSize: 10, letterSpacing: '0.3em' }}>The Gauntlet</p>
+                    <h1 className="text-5xl sm:text-6xl font-bold italic text-[#A020F0] font-pixel mb-2 tracking-tighter">Gauntlet.</h1>
+                    <p className="font-mono text-zinc-600 uppercase mb-12" style={{ fontSize: 10, letterSpacing: '0.3em' }}>By Gawkers</p>
                     <a href="/api/auth/twitter" className="w-full flex items-center justify-center gap-3 bg-white text-black font-bold uppercase font-pixel py-4 hover:bg-[#A020F0] hover:text-black transition-all no-underline" style={{ fontSize: 14, letterSpacing: '0.05em' }}>
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                         Connect with X
                     </a>
                     {authError && <p className="font-mono text-red-400 mt-4 text-center" style={{ fontSize: 11 }}>{authError}</p>}
-                    <p className="font-mono text-zinc-700 mt-8 text-center leading-relaxed" style={{ fontSize: 10 }}>Top 300 who clear Level 3 earn a free mint.</p>
+                    <p className="font-mono text-zinc-700 mt-8 text-center leading-relaxed" style={{ fontSize: 10 }}>Top 300 gamers who clear Level 3 earns GawkLord free mint.</p>
                 </div>
             )}
 
