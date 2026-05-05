@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
     title: 'Gauntlet - By Gawkers',
-    description: 'Pixel-art gaming powerhouse on Ethereum. Play to earn your mint.',
+    description: 'Pixel-art gaming powerhouse on Ethereum.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

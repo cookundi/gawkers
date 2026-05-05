@@ -8,6 +8,7 @@ const CHARACTERS = [
 ];
 
 const TARGET_SCORE: Record<number, number> = { 1: 800, 2: 1500, 3: 3000 };
+const REC_TARGET: Record<number, number> = { 1: 100, 2: 150, 3: 200 };
 const CANVAS_W = 400;
 const CANVAS_H = 600;
 
@@ -32,13 +33,14 @@ interface EnemyBullet {
 interface GameProps {
     levelToPlay: number;
     gameToken: string;
+    recMode?: boolean;
     onLevelWin: (level: number, score: number, kills: number, timeMs: number) => void;
     onGameOver: (level: number, score: number, kills: number, timeMs: number) => void;
     onRetry: (level: number) => Promise<string>; // returns new game token
     onQuit: () => void;
 }
 
-export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onRetry, onQuit }: GameProps) => {
+export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin, onGameOver, onRetry, onQuit }: GameProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [gameState, setGameState] = useState<'selection' | 'playing' | 'paused' | 'gameover' | 'win'>('selection');
@@ -66,7 +68,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
     const gameStateRef = useRef(gameState);
     const shakeRef = useRef(0);
     const currentTokenRef = useRef(gameToken);
-    const targetScore = TARGET_SCORE[levelToPlay] || 800;
+    const targetScore = recMode ? (REC_TARGET[levelToPlay] || 100) : (TARGET_SCORE[levelToPlay] || 800);
 
     // Big-kill streak: 3 consecutive big-enemy kills → 2x on the 3rd
     const bigKillStreak = useRef(0);
@@ -107,12 +109,28 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
         if (!sound) return;
         const clone = sound.cloneNode() as HTMLAudioElement;
         clone.volume = vol;
-        clone.play().catch(() => {});
+        clone.play().catch(() => { });
     };
 
     const clearAllInput = useCallback(() => {
         keys.current = {};
         activePointers.current.clear();
+    }, []);
+
+    // Recreate bgMusic fresh — fixes mobile where paused Audio won't resume
+    const restartMusic = useCallback(() => {
+        try {
+            if (bgMusic.current) {
+                bgMusic.current.pause();
+                bgMusic.current.src = '';
+                bgMusic.current = null;
+            }
+            const m = new Audio('/bg-music.mp3');
+            m.loop = true;
+            m.volume = 0.15;
+            bgMusic.current = m;
+            m.play().catch(() => {});
+        } catch {}
     }, []);
 
     // Reset game state (used by both initGame and retry)
@@ -141,7 +159,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
         img.onload = () => {
             setSelectedImg(img);
             setGameState('playing');
-            bgMusic.current?.play().catch(() => {});
+            restartMusic();
             resetGameState();
         };
     };
@@ -155,9 +173,8 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
             currentTokenRef.current = newToken;
             resetGameState();
             setGameState('playing');
-            bgMusic.current?.play().catch(() => {});
+            restartMusic();
         } catch {
-            // If token fetch fails, fall back to hub
             onQuit();
         } finally {
             setRetrying(false);
@@ -244,7 +261,10 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
 
             frame.current++;
             const elapsed = (Date.now() - startTime.current) / 1000;
-            const diffBoost = Math.floor(elapsed / 8) * 0.5;
+            // Difficulty ramp: slower on lvl1, more aggressive on lvl2/3
+            const rampInterval = levelToPlay === 1 ? 14 : levelToPlay === 2 ? 10 : 7;
+            const rampAmount = levelToPlay === 1 ? 0.22 : levelToPlay === 2 ? 0.38 : 0.52;
+            const diffBoost = Math.floor(elapsed / rampInterval) * rampAmount;
 
             // Movement
             const moveSpeed = 7;
@@ -263,7 +283,9 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
             }
 
             // Spawn enemies
-            const baseRate = Math.max(10, 38 - (levelToPlay * 5) - Math.floor(diffBoost * 3));
+            // Spawn rate: lvl1 slower, each level noticeably faster
+            const baseSpawn = levelToPlay === 1 ? 52 : levelToPlay === 2 ? 38 : 26;
+            const baseRate = Math.max(12, baseSpawn - Math.floor(diffBoost * 2.5));
             if (frame.current % baseRate === 0) {
                 const rand = Math.random();
                 let type: EnemyType;
@@ -282,15 +304,22 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
                 const size = type === 'small' ? 30 : type === 'mid' ? 48 : type === 'shooter' ? 42 : 76;
                 const spawnX = Math.random() * (CANVAS_W - size);
 
-                enemies.current.push({
-                    x: spawnX, y: -size, w: size, h: size,
-                    hp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
-                    maxHp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
-                    type, pattern,
-                    speed: (type === 'small' ? 4 : type === 'mid' ? 2.8 : type === 'shooter' ? 2 : 1.8) + diffBoost,
-                    spawnX, age: 0,
-                    shootCooldown: 60 + Math.floor(Math.random() * 40),
-                });
+                    // Base speeds scale with level — lvl1 forgiving, lvl3 punishing
+                    const baseSpeed = {
+                        small:   levelToPlay === 1 ? 2.4 : levelToPlay === 2 ? 3.2 : 4.2,
+                        mid:     levelToPlay === 1 ? 1.6 : levelToPlay === 2 ? 2.2 : 3.0,
+                        shooter: levelToPlay === 1 ? 1.2 : levelToPlay === 2 ? 1.7 : 2.4,
+                        big:     levelToPlay === 1 ? 1.0 : levelToPlay === 2 ? 1.4 : 2.0,
+                    };
+                    enemies.current.push({
+                        x: spawnX, y: -size, w: size, h: size,
+                        hp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
+                        maxHp: type === 'small' ? 1 : type === 'mid' ? 2 : type === 'shooter' ? 3 : 5,
+                        type, pattern,
+                        speed: baseSpeed[type] + diffBoost,
+                        spawnX, age: 0,
+                        shootCooldown: 60 + Math.floor(Math.random() * 40),
+                    });
             }
 
             // Update player bullets
@@ -328,7 +357,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, onLevelWin, onGameOver, onR
                 if (en.type === 'shooter' && en.y > 40 && en.y < CANVAS_H - 100) {
                     en.shootCooldown--;
                     if (en.shootCooldown <= 0) {
-                        enemyBullets.current.push({ x: en.x + en.w / 2, y: en.y + en.h, speed: 5 + diffBoost * 0.3 });
+                        enemyBullets.current.push({ x: en.x + en.w / 2, y: en.y + en.h, speed: (levelToPlay === 1 ? 3 : levelToPlay === 2 ? 4 : 5.5) + diffBoost * 0.2 });
                         en.shootCooldown = 50 + Math.floor(Math.random() * 30);
                     }
                 }

@@ -62,7 +62,7 @@ export default function Home() {
     const [activeLevel, setActiveLevel] = useState(1);
     const [gameToken, setGameToken] = useState('');
     const [authError, setAuthError] = useState('');
-
+    const [recMode, setRecMode] = useState(false);
     const [lbPeriod, setLbPeriod] = useState<'daily' | 'weekly' | 'overall'>('overall');
     const [lbData, setLbData] = useState<any[]>([]);
     const [lbSearch, setLbSearch] = useState('');
@@ -70,6 +70,7 @@ export default function Home() {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
+        if (params.get('rec') === '1') setRecMode(true);
         const err = params.get('error');
         if (err) {
             setAuthError(err === 'denied' ? 'Access denied by X' : 'Login failed, try again');
@@ -77,7 +78,7 @@ export default function Home() {
         }
         fetch('/api/auth').then(r => r.json()).then(data => {
             if (data.authenticated) { setPlayer(data.player); setView('hub'); }
-        }).catch(() => {}).finally(() => setLoading(false));
+        }).catch(() => { }).finally(() => setLoading(false));
     }, []);
 
     const refreshProfile = useCallback(async () => {
@@ -85,7 +86,7 @@ export default function Home() {
             const res = await fetch('/api/player');
             const data = await res.json();
             if (!data.error) setPlayer(data);
-        } catch {}
+        } catch { }
     }, []);
 
     const handleLogout = async () => {
@@ -122,7 +123,7 @@ export default function Home() {
             const res = await fetch('/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gameToken, score, level, kills, timeMs }) });
             const data = await res.json();
             if (data.player) setPlayer(prev => prev ? { ...prev, ...data.player } : prev);
-        } catch {}
+        } catch { }
     };
 
     const handleQuitGame = async () => {
@@ -138,7 +139,7 @@ export default function Home() {
             const res = await fetch(`/api/leaderboard?${params}`);
             const data = await res.json();
             setLbData(data.leaderboard || []);
-        } catch {} finally { setLbLoading(false); }
+        } catch { } finally { setLbLoading(false); }
     }, [lbPeriod, lbSearch]);
 
     useEffect(() => { if (view === 'leaderboard') fetchLeaderboard(); }, [view, lbPeriod, fetchLeaderboard]);
@@ -170,7 +171,7 @@ export default function Home() {
                     <h1 className="text-5xl sm:text-6xl font-bold italic text-[#A020F0] font-pixel mb-2 tracking-tighter">Gauntlet.</h1>
                     <p className="font-mono text-zinc-600 uppercase mb-12" style={{ fontSize: 10, letterSpacing: '0.3em' }}>By Gawkers</p>
                     <a href="/api/auth/twitter" className="w-full flex items-center justify-center gap-3 bg-white text-black font-bold uppercase font-pixel py-4 hover:bg-[#A020F0] hover:text-black transition-all no-underline" style={{ fontSize: 14, letterSpacing: '0.05em' }}>
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
                         Connect with X
                     </a>
                     {authError && <p className="font-mono text-red-400 mt-4 text-center" style={{ fontSize: 11 }}>{authError}</p>}
@@ -252,6 +253,7 @@ export default function Home() {
                     <GameCanvas
                         levelToPlay={activeLevel}
                         gameToken={gameToken}
+                        recMode={recMode}
                         onLevelWin={(lvl, sc, k, t) => submitScore(lvl, sc, k, t)}
                         onGameOver={(lvl, sc, k, t) => submitScore(lvl, sc, k, t)}
                         onRetry={handleRetry}
@@ -398,8 +400,8 @@ export default function Home() {
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <span className="font-mono text-zinc-600" style={{ fontSize: 10 }}>{s.kills} kills</span>
-                                            <span className={`font-mono font-bold ${s.score >= (TARGET_SCORE[s.level as 1|2|3] || 800) ? 'text-green-400' : 'text-red-400'}`} style={{ fontSize: 10 }}>
-                                                {s.score >= (TARGET_SCORE[s.level as 1|2|3] || 800) ? 'WIN' : 'LOSS'}
+                                            <span className={`font-mono font-bold ${s.score >= (TARGET_SCORE[s.level as 1 | 2 | 3] || 800) ? 'text-green-400' : 'text-red-400'}`} style={{ fontSize: 10 }}>
+                                                {s.score >= (TARGET_SCORE[s.level as 1 | 2 | 3] || 800) ? 'WIN' : 'LOSS'}
                                             </span>
                                         </div>
                                     </div>
