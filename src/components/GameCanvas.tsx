@@ -72,6 +72,7 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
 
     // Big-kill streak: 3 consecutive big-enemy kills → 2x on the 3rd
     const bigKillStreak = useRef(0);
+    const isMobile = useRef(typeof window !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
 
     // Input
     const keys = useRef<Record<string, boolean>>({});
@@ -206,7 +207,10 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
 
     // Particles
     const spawnParticles = (x: number, y: number, color: string, count = 6) => {
-        for (let i = 0; i < count; i++) {
+        // Cap total particles to avoid buildup on mobile
+        if (particles.current.length > 20) particles.current.splice(0, particles.current.length - 20);
+        const actual = isMobile.current ? Math.min(count, 4) : count;
+        for (let i = 0; i < actual; i++) {
             particles.current.push({
                 x, y,
                 vx: (Math.random() - 0.5) * 8,
@@ -222,11 +226,9 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
     const drawEnemy = (ctx: CanvasRenderingContext2D, en: Enemy) => {
         ctx.save();
         const cx = en.x + en.w / 2, cy = en.y + en.h / 2, r = en.w / 2;
-        ctx.shadowColor = en.type === 'shooter' ? '#ffaa00' : en.type === 'big' ? '#ff0044' : en.type === 'mid' ? '#ff6600' : '#ff3333';
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = en.type === 'shooter' ? '#cc8800' : en.type === 'big' ? '#cc0033' : en.type === 'mid' ? '#cc4400' : '#993333';
+        // Brighter fills replace shadowBlur (shadowBlur is very expensive on mobile)
+        ctx.fillStyle = en.type === 'shooter' ? '#e09000' : en.type === 'big' ? '#e0003a' : en.type === 'mid' ? '#e05000' : '#c03030';
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
         ctx.fillStyle = '#fff';
         ctx.fillRect(cx - r * 0.35, cy - r * 0.2, r * 0.25, r * 0.25);
         ctx.fillRect(cx + r * 0.1, cy - r * 0.2, r * 0.25, r * 0.25);
@@ -258,6 +260,8 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
 
         const loop = () => {
             if (gameStateRef.current !== 'playing') return;
+            // Pause when tab is hidden (saves CPU/battery on mobile)
+            if (document.hidden) { animId = requestAnimationFrame(loop); return; }
 
             frame.current++;
             const elapsed = (Date.now() - startTime.current) / 1000;
@@ -454,9 +458,12 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
             ctx.save();
             if (shakeRef.current > 0) ctx.translate((Math.random() - 0.5) * shakeRef.current * 2, (Math.random() - 0.5) * shakeRef.current * 2);
             ctx.fillStyle = '#050505'; ctx.fillRect(-5, -5, CANVAS_W + 10, CANVAS_H + 10);
-            ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-            for (let i = 0; i < CANVAS_W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_H); ctx.stroke(); }
-            for (let i = 0; i < CANVAS_H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CANVAS_W, i); ctx.stroke(); }
+            // Draw grid — skip every other frame on mobile (it's static, no one notices)
+            if (!isMobile.current || frame.current % 2 === 0) {
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                for (let i = 0; i < CANVAS_W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_H); ctx.stroke(); }
+                for (let i = 0; i < CANVAS_H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CANVAS_W, i); ctx.stroke(); }
+            }
 
             // Particles
             particles.current.forEach(p => {
@@ -465,15 +472,13 @@ export const GameCanvas = ({ levelToPlay, gameToken, recMode = false, onLevelWin
             });
             ctx.globalAlpha = 1;
 
-            // Player bullets
-            ctx.shadowColor = '#A020F0'; ctx.shadowBlur = 6; ctx.fillStyle = '#A020F0';
+            // Player bullets — bright purple, no shadow needed
+            ctx.fillStyle = '#bf40ff';
             bullets.current.forEach(b => ctx.fillRect(b.x, b.y, 4, 14));
-            ctx.shadowBlur = 0;
 
             // Enemy bullets
-            ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 5; ctx.fillStyle = '#ffaa00';
+            ctx.fillStyle = '#ffbb22';
             enemyBullets.current.forEach(eb => { ctx.beginPath(); ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2); ctx.fill(); });
-            ctx.shadowBlur = 0;
 
             // Enemies + HP bars
             enemies.current.forEach(en => {
