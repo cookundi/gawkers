@@ -11,12 +11,11 @@ export async function GET(req: Request) {
         const offset = (page - 1) * limit;
         const searchParam = search ? `%${search.toLowerCase().replace('@', '')}%` : '';
 
-        // OVERALL: rank by players.total_score (cumulative all-time)
         if (period === 'overall') {
             const leaderboard = searchParam
                 ? await sql`
                     SELECT p.twitter_handle, p.profile_image_url, p.total_score,
-                           p.current_level as level, p.total_games as games,
+                           LEAST(p.current_level, 3) as level, p.total_games as games,
                            p.total_kills as kills, p.completed,
                            ROW_NUMBER() OVER (ORDER BY p.total_score DESC, p.created_at ASC) as rank
                     FROM players p WHERE p.total_games > 0
@@ -25,7 +24,7 @@ export async function GET(req: Request) {
                 `
                 : await sql`
                     SELECT p.twitter_handle, p.profile_image_url, p.total_score,
-                           p.current_level as level, p.total_games as games,
+                           LEAST(p.current_level, 3) as level, p.total_games as games,
                            p.total_kills as kills, p.completed,
                            ROW_NUMBER() OVER (ORDER BY p.total_score DESC, p.created_at ASC) as rank
                     FROM players p WHERE p.total_games > 0
@@ -34,13 +33,12 @@ export async function GET(req: Request) {
             return NextResponse.json({ leaderboard, page, period });
         }
 
-        // DAILY: SUM of scores in last 24h
         if (period === 'daily') {
             const leaderboard = searchParam
                 ? await sql`
                     SELECT p.twitter_handle, p.profile_image_url,
                            SUM(s.score) as total_score,
-                           MAX(s.level) as level, COUNT(*) as games,
+                           LEAST(MAX(s.level), 3) as level, COUNT(*) as games,
                            SUM(s.kills) as kills,
                            ROW_NUMBER() OVER (ORDER BY SUM(s.score) DESC) as rank
                     FROM scores s JOIN players p ON s.twitter_id = p.twitter_id
@@ -52,7 +50,7 @@ export async function GET(req: Request) {
                 : await sql`
                     SELECT p.twitter_handle, p.profile_image_url,
                            SUM(s.score) as total_score,
-                           MAX(s.level) as level, COUNT(*) as games,
+                           LEAST(MAX(s.level), 3) as level, COUNT(*) as games,
                            SUM(s.kills) as kills,
                            ROW_NUMBER() OVER (ORDER BY SUM(s.score) DESC) as rank
                     FROM scores s JOIN players p ON s.twitter_id = p.twitter_id
@@ -63,13 +61,12 @@ export async function GET(req: Request) {
             return NextResponse.json({ leaderboard, page, period });
         }
 
-        // WEEKLY: SUM of scores in last 7 days
         if (period === 'weekly') {
             const leaderboard = searchParam
                 ? await sql`
                     SELECT p.twitter_handle, p.profile_image_url,
                            SUM(s.score) as total_score,
-                           MAX(s.level) as level, COUNT(*) as games,
+                           LEAST(MAX(s.level), 3) as level, COUNT(*) as games,
                            SUM(s.kills) as kills,
                            ROW_NUMBER() OVER (ORDER BY SUM(s.score) DESC) as rank
                     FROM scores s JOIN players p ON s.twitter_id = p.twitter_id
@@ -81,7 +78,7 @@ export async function GET(req: Request) {
                 : await sql`
                     SELECT p.twitter_handle, p.profile_image_url,
                            SUM(s.score) as total_score,
-                           MAX(s.level) as level, COUNT(*) as games,
+                           LEAST(MAX(s.level), 3) as level, COUNT(*) as games,
                            SUM(s.kills) as kills,
                            ROW_NUMBER() OVER (ORDER BY SUM(s.score) DESC) as rank
                     FROM scores s JOIN players p ON s.twitter_id = p.twitter_id
